@@ -46,7 +46,7 @@ services:
       - N8N_PORT=${N8N_PORT}
       - N8N_PROTOCOL=${N8N_PROTOCOL}  
       # - NODE_ENV=production
-      - WEBHOOK_URL=${WEBHOOK_URL}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
       - TZ=${GENERIC_TIMEZONE}
       - N8N_RESTRICT_FILE_ACCESS_TO=/files
@@ -54,6 +54,12 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
       - ./local-files:/files
+  tunnel:
+    container_name: cloudflared
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}  
+    command: tunnel --no-autoupdate --url http://n8n:5678
 
 volumes:
   n8n_data:
