@@ -1,0 +1,54 @@
+
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © OmidPanahi7m6a8
+//@version=6
+indicator("ACD OmidPanahi7m6a8", overlay=true)
+// **Set Market Start Time in NYSE Time Zone (9:30 AM ET)**
+startTime = timestamp("America/New_York", year(time), month(time), dayofmonth(time), 9, 30)
+endTime = timestamp("America/New_York", year(time), month(time), dayofmonth(time), 16, 00)
+openingRangeCustom = input(30, title="OP Range") // default is 30 minutes
+openingRangeEnd = startTime + openingRangeCustom * 60 * 1000 
+// **Detect New Trading Day**
+newDay = ta.change(dayofmonth(time)) > 0
+// **Track Opening Range - Store Persistently to Prevent Disappearance on Timeframe Change**
+var float openRangeHigh = na
+var float openRangeLow = na
+if (newDay)
+    openRangeHigh := na
+    openRangeLow := na
+// **Capture Opening Range Values (Only for Today)**
+isToday = dayofmonth(time) == dayofmonth(time[1]) // Ensures values are drawn only for today
+if (time >= startTime and time < openingRangeEnd and isToday)
+    openRangeHigh := na(openRangeHigh) ? high : math.max(openRangeHigh, high)
+    openRangeLow := na(openRangeLow) ? low : math.min(openRangeLow, low)
+// **Define ACD Levels (Customizable Multipliers)**
+A_Level = input(0.5, title="A Level Multiplier")  
+var float A_Up = na
+var float A_Down = na
+if (time > openingRangeEnd)
+    A_Up := openRangeHigh + A_Level
+    A_Down := openRangeLow - A_Level
+// **Define C Levels**
+C_Level = input(0.25, title="C Level Multiplier")
+var float C_Up = na
+var float C_Down = na
+if (time > openingRangeEnd)
+    C_Up := openRangeHigh + C_Level
+    C_Down := openRangeLow - C_Level
+// **Ensure Only Today’s Lines Are Shown & Persist Across Timeframes**
+showTodayLines = (dayofmonth(time) == dayofmonth(time[1])) and (time > openingRangeEnd)
+// **Fill the Opening Range Only for Today**
+// fillColor = color.rgb(156, 156, 156, 80)
+// bgcolor(time >= startTime and time <= openingRangeEnd ? fillColor : na)
+// **Confined Background Fill Between Opening Range High & Low**
+openRangeFill = plot(time >= startTime and time <= openingRangeEnd ? openRangeHigh : na, title="Opening Range Fill High", style=plot.style_linebr, linewidth = 2)
+openRangeFillLow = plot(time >= startTime and time <= openingRangeEnd ? openRangeLow : na, title="Opening Range Fill Low", style=plot.style_linebr, linewidth=2)
+fill(openRangeFill, openRangeFillLow, color=color.rgb(156, 156, 156, 60))  // Creates the shaded area
+// **Plot Opening Range High and Low (Only After 10:00 AM, Until Market Close)**
+plot((showTodayLines and time > openingRangeEnd and time <= endTime) ? openRangeHigh : na, title="Opening Range High", color=color.blue, linewidth=1, style=plot.style_linebr)
+plot((showTodayLines and time > openingRangeEnd and time <= endTime) ? openRangeLow : na, title="Opening Range Low", color=color.blue, linewidth=1, style=plot.style_linebr)
+// **Plot ACD Levels (Only After 10:00 AM, Until Market Close, and Persist Across Timeframes)**
+plot((showTodayLines and time > openingRangeEnd and time <= endTime) ? A_Up : na, title="A-Up Level", color=color.red, linewidth=2, style=plot.style_linebr)
+plot((showTodayLines and time > openingRangeEnd and time <= endTime) ? A_Down : na, title="A-Down Level", color=color.red, linewidth=2, style=plot.style_linebr)
+plot((showTodayLines and time > openingRangeEnd and time <= endTime) ? C_Up : na, title="C-Up Level", color=color.green, linewidth=1, style=plot.style_linebr)
+plot((showTodayLines and time > openingRangeEnd and time <= endTime) ? C_Down : na, title="C-Down Level", color=color.green, linewidth=1, style=plot.style_linebr)

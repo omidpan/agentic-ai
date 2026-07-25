@@ -1,0 +1,75 @@
+//@version=5
+indicator("Qbit-Pivot", overlay=false)
+var   float[] pivots = array.new_float()
+
+makeLevel(highest,lowest,preClosed)=>
+
+    a=(highest + lowest + preClosed) / 3
+    b=(highest + lowest) / 2
+    d=math.abs(a - b)
+    array.push(pivots,a)
+    array.push(pivots,b)
+    array.push(pivots,d)
+
+
+findPValues( r)=>
+    prevHigh = request.security(syminfo.tickerid, "D", high[1])  // High of the previous day
+    prevLow = request.security(syminfo.tickerid, "D", low[1])   //low of the previous day
+    preClosed = request.security(syminfo.tickerid, "D", close[1])
+    makeLevel(prevHigh,prevLow,preClosed)
+// hourlyLogic()=>
+//     prevHigh = request.security(syminfo.tickerid, "h", high[1])  // High of the previous day
+//     prevLow = request.security(syminfo.tickerid, "h", low[1])   //low of the previous day
+//     preClosed = request.security(syminfo.tickerid, "h", close[1])
+//     makeLevel(prevHigh,prevLow,preClosed)    
+
+threeDayLogic()=>
+    prevHigh = request.security(syminfo.tickerid, "D", high[1])  // High of the previous day
+    prevHigh2 = request.security(syminfo.tickerid, "D", high[2]) // High of the day before previous
+    prevHigh3 = request.security(syminfo.tickerid, "D", high[3]) // High of 3 days ago
+    prevLow = request.security(syminfo.tickerid, "D", low[1])    // Low of the previous day
+    prevLow2 = request.security(syminfo.tickerid, "D", low[2])   // Low of the day before previous
+    prevLow3 = request.security(syminfo.tickerid, "D", low[3])   // Low of 3 days ago
+    prevClose = request.security(syminfo.tickerid, "D", close[1]) // Close of the previous day
+
+    // Calculate the highest high and lowest low of the previous 3 days
+    highestHigh = math.max(prevHigh, math.max(prevHigh2, prevHigh3))  // Highest high from the last 3 days
+    lowestLow = math.min(prevLow, math.min(prevLow2, prevLow3)) 
+    makeLevel(highestHigh,lowestLow,prevClose)
+
+pivotRange = input.string("3D", title="Select Timeframe (default 3Days)", options=["H","D","3D", "W"])
+if pivotRange =="3D"
+    threeDayLogic()
+else 
+    findPValues(pivotRange)
+// switch pivotRange
+//     "D"=>findPValues(pivotRange)
+//     "3D"=>threeDayLogic()
+//     "W"=> findPValues(pivotRange)
+//     "h"=>findPValues(pivotRange)
+// Define the high, low, and close of the previous 3 days (excluding today)
+    // Lowest low from the last 3 days
+
+// Calculate A, B, and d
+// A = (highestHigh + lowestLow + prevClose) / 3
+// B = (highestHigh + lowestLow) / 2
+// d = math.abs(A - B)
+
+// // Define the three levels
+// levelUp = array.get(pivots,0) + array.get(pivots,2)
+// level = array.get(pivots,0)
+// levelDown = array.get(pivots,0) - array.get(pivots,2)
+
+// // Time condition: Don't plot if time is before current time - 10 hours (10 hours = 10 * 60 * 60 = 36,000 seconds)
+// timeCondition = (time >= (timestamp("America/New_York", year, month, dayofmonth, hour, minute) - 10 * 60 * 60 * 1000))
+
+
+// // Plot the levels with dashed or dotted lines based on the condition
+// plot(timeCondition ? levelUp : na, color=color.green, linewidth=1, title="Level Up", style=plot.style_steplinebr)
+// plot(timeCondition ? level : na, color=color.blue, linewidth=1, title="Level", style=plot.style_steplinebr)
+// plot(timeCondition ? levelDown : na, color=color.red, linewidth=1, title="Level Down", style=plot.style_steplinebr)
+// makeLevel(10,10,10)
+// Plot the values from the array for demonstration
+plot(array.size(pivots) > 0 ? array.get(pivots, 0) :na, color=color.blue, title="First Value (Close)")
+plot(array.size(pivots) > 1 ? array.get(pivots, 1) : na, color=color.green, title="Second Value (High)")
+plot(array.size(pivots) > 2 ? array.get(pivots, 2):na, color=color.red, title="Third Value (Low)")

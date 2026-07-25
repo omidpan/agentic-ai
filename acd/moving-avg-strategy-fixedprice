@@ -1,0 +1,65 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ZenAndTheArtOfTrading / PineScriptMastery.com
+// @version=6
+
+// PRICE-BASED FIXED SL/TP
+
+strategy("PineScriptMastery.com | Fixed Price SL/TP", overlay=true)
+
+//! User inputs 
+float INPUT_SL_DISTANCE     = input.float(1, "SL Distance", display=display.none)
+float INPUT_RISK_REWARD     = input.float(2, "Risk:Reward", display=display.none)
+int INPUT_MA_LENGTH         = input.int(50, "MA Length", display=display.none)
+
+//! Indicator values
+float atrValue              = ta.atr(14)
+float movingAverage         = ta.sma(close, INPUT_MA_LENGTH)
+
+//! Variables
+var float tradeTakeProfit   = na
+var float tradeStopLoss     = na
+
+//! Conditions
+bool canTakeTrade           = strategy.position_size == 0 and not na(atrValue) and not na(movingAverage)
+bool longEntryCondition     = ta.crossover(close, movingAverage) and barstate.isconfirmed
+bool shortEntryCondition    = ta.crossunder(close, movingAverage) and barstate.isconfirmed
+
+//! Check entry conditions
+if (canTakeTrade)
+    //! Reset SL/TP before placing a new trade
+    tradeTakeProfit := na 
+    tradeStopLoss   := na
+
+    //! Calculate SL distance in points
+    float slDistance = atrValue * INPUT_SL_DISTANCE
+
+    //! LONG ENTRY
+    if (longEntryCondition)
+        //! Enter
+        strategy.entry("Long", strategy.long)
+        //! Calculate stops & targets
+        tradeTakeProfit := close + (slDistance * INPUT_RISK_REWARD)
+        tradeStopLoss := close - slDistance
+
+    //! SHORT ENTRY
+    if (shortEntryCondition)
+        //! Enter
+        strategy.entry("Short", strategy.short)
+        //! Calculate stops & targets
+        tradeTakeProfit := close - (slDistance * INPUT_RISK_REWARD)
+        tradeStopLoss := close + slDistance
+
+//! Long exit
+if (strategy.position_size > 0)
+    //! LONG PRICE EXITS
+    strategy.exit("Exit Long", from_entry="Long", stop=tradeStopLoss, limit=tradeTakeProfit)
+
+//! Short exit
+if (strategy.position_size < 0)
+    //! SHORT PRICE EXITS
+    strategy.exit("Exit Short", from_entry="Short", stop=tradeStopLoss, limit=tradeTakeProfit)
+
+//! Drawing/debug 
+plot(tradeTakeProfit, "TP", color=color.lime, style=plot.style_linebr)
+plot(tradeStopLoss, "SL", color=color.red, style=plot.style_linebr)
+plot(movingAverage, "MA", color=color.blue)

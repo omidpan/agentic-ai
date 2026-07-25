@@ -1,0 +1,264 @@
+//@version=6
+// // Run this script on an intraday chart.
+// indicator("New day started", overlay = true)
+// // Highlights the first bar of the new day.
+// isNewDay = timeframe.change("2D")
+// bgcolor(isNewDay ? color.new(color.green, 80) : na)
+// //@version=6
+// indicator("ticker.kagi", overlay=true) 
+// kagi_tickerid = ticker.kagi(syminfo.tickerid, 3)
+// kagi_close = request.security(kagi_tickerid, timeframe.period, close)
+// plot(kagi_close)
+// //line break
+
+// //@version=6
+// indicator("ticker.linebreak", overlay=true) 
+// linebreak_tickerid = ticker.linebreak(syminfo.tickerid, 10)
+// linebreak_close = request.security(linebreak_tickerid, timeframe.period, close)
+// plot(linebreak_close)
+// //@version=6
+// indicator("ticker_modify", overlay=true)
+// t1 = ticker.new(syminfo.prefix, syminfo.ticker, session.regular, adjustment.splits)
+// c1 = request.security(t1, "D", close)
+// t2 = ticker.modify(t1, session.regular)
+// c2 = request.security(t2, "2D", close)
+// plot(c1)
+// plot(c2)
+// //@version=6
+// indicator("ta.atr")
+// plot(ta.atr(14))
+
+// //the same on pine
+// pine_atr(length) =>
+//     trueRange = na(high[1])? high-low : math.max(math.max(high - low, math.abs(high - close[1])), math.abs(low - close[1]))
+//     //true range can be also calculated with ta.tr(true)
+//     ta.rma(trueRange, length)
+
+// plot(pine_atr(14))
+// //@version=6
+// indicator("Simple `request.security()` calls")
+// // Returns 1D close of the current symbol.
+// dailyClose = request.security(syminfo.tickerid, "1D", close)
+// plot(dailyClose)
+
+// // Returns the close of "AAPL" from the same timeframe as currently open on the chart.
+// aaplClose = request.security("IONQ", timeframe.period, close)
+// plot(aaplClose)
+
+//@version=6
+// indicator("Advanced `request.security()` calls")
+// // This calculates a 10-period moving average on the active chart.
+// sma = ta.sma(close, 10)
+// // This sends the `sma` calculation for execution in the context of the "AAPL" symbol at a "240" (4 hours) timeframe.
+// aaplSma = request.security("AAPL", "240", sma)
+// plot(aaplSma)
+
+// // To avoid differences on historical and realtime bars, you can use this technique, which only returns a value from the higher timeframe on the bar after it completes:
+// indexHighTF = barstate.isrealtime ? 1 : 0
+// indexCurrTF = barstate.isrealtime ? 0 : 1
+// nonRepaintingClose = request.security(syminfo.tickerid, "1D", close[indexHighTF])[indexCurrTF]
+// plot(nonRepaintingClose, "Non-repainting close")
+
+// // Returns the 1H close of "AAPL", extended session included. The value is dividend-adjusted.
+// extendedTicker = ticker.modify("NASDAQ:AAPL", session = session.extended, adjustment = adjustment.dividends)
+// aaplExtAdj = request.security(extendedTicker, "60", close)
+// plot(aaplExtAdj)
+
+// // Returns the result of a user-defined function.
+// // The `max` variable is mutable, but we can pass it to `request.security()` because it is wrapped in a function.
+// allTimeHigh(source) =>
+//     var max = source
+//     max := math.max(max, source)
+// allTimeHigh1D = request.security(syminfo.tickerid, "10D", allTimeHigh(high))
+
+// // By using a tuple `expression`, we obtain several values with only one `request.security()` call.
+// [open1D, high1D, low1D, close1D, ema1D] = request.security(syminfo.tickerid, "1D", [open, high, low, close, ta.ema(close, 100)])
+// plotcandle(open1D, high1D, low1D, close1D)
+// plot(ema1D)
+
+// // Returns an array containing the OHLC values of the chart's symbol from the 1D timeframe.
+// ohlcArray = request.security(syminfo.tickerid, "1D", array.from(open, high, low, close))
+// plotcandle(array.get(ohlcArray, 0), array.get(ohlcArray, 1), array.get(ohlcArray, 2), array.get(ohlcArray, 3))
+
+
+
+// //@version=6
+// indicator("Advanced `request.security()` calls")
+// // This calculates a 10-period moving average on the active chart.
+// sma = ta.sma(close, 10)
+// // This sends the `sma` calculation for execution in the context of the "AAPL" symbol at a "240" (4 hours) timeframe.
+// aaplSma = request.security("AAPL", "240", sma)
+// plot(aaplSma)
+
+// // To avoid differences on historical and realtime bars, you can use this technique, which only returns a value from the higher timeframe on the bar after it completes:
+// indexHighTF = barstate.isrealtime ? 1 : 0
+// indexCurrTF = barstate.isrealtime ? 0 : 1
+// nonRepaintingClose = request.security(syminfo.tickerid, "1D", close[indexHighTF])[indexCurrTF]
+// plot(nonRepaintingClose, "Non-repainting close")
+
+// // Returns the 1H close of "AAPL", extended session included. The value is dividend-adjusted.
+// extendedTicker = ticker.modify("NASDAQ:AAPL", session = session.extended, adjustment = adjustment.dividends)
+// aaplExtAdj = request.security(extendedTicker, "60", close)
+// plot(aaplExtAdj)
+
+// // Returns the result of a user-defined function.
+// // The `max` variable is mutable, but we can pass it to `request.security()` because it is wrapped in a function.
+// allTimeHigh(source) =>
+//     var max = source
+//     max := math.max(max, source)
+// allTimeHigh1D = request.security(syminfo.tickerid, "1D", allTimeHigh(high))
+
+// // By using a tuple `expression`, we obtain several values with only one `request.security()` call.
+// [open1D, high1D, low1D, close1D, ema1D] = request.security(syminfo.tickerid, "1D", [open, high, low, close, ta.ema(close, 10)])
+// plotcandle(open1D, high1D, low1D, close1D)
+// plot(ema1D)
+
+// // Returns an array containing the OHLC values of the chart's symbol from the 1D timeframe.
+// ohlcArray = request.security(syminfo.tickerid, "1D", array.from(open, high, low, close))
+// plotcandle(array.get(ohlcArray, 0), array.get(ohlcArray, 1), array.get(ohlcArray, 2), array.get(ohlcArray, 3))
+
+
+
+
+// //@version=6
+// indicator("`alert()` example", "", true)
+// ma = ta.wma(close, 14)
+// xUp = ta.crossover(close, ma)
+// if xUp
+//     // Trigger the alert the first time a cross occurs during the real-time bar.
+//     alert("Price (" + str.tostring(close) + ") crossed over MA (" + str.tostring(ma) + ").", alert.freq_once_per_bar)
+// plot(ma)
+// plotchar(xUp, "xUp", "▲", location.belowbar, size = size.tiny)
+
+
+
+
+// //@version=6
+// indicator("array.concat example")
+// a = array.new_float(0,0)
+// b = array.new_float(0,0)
+// for i = 0 to 4
+//     array.push(a, high[i])
+//     array.push(b, low[i])
+// c = array.concat(a,b)
+// plot(array.size(a))
+// plot(array.size(b))
+// plot(array.size(c))
+
+
+
+
+// //@version=6
+// indicator("array.from_example", overlay = false)
+// arr = array.from("Hello", "World!") // arr (array<string>) will contain 2 elements: {Hello}, {World!}.
+// plot(close)
+
+
+
+// indicator("input.session", overlay=true)
+// i_sess = input.session("1300-1700", "Session", options=["0930-1600", "1300-1700", "1700-2100"])
+// t = time(timeframe.period, i_sess)
+// bgcolor(time == t ? color.rgb(173, 175, 76) : na)
+
+
+
+
+// //@version=6
+// indicator("input.source", overlay=true)
+// i_src = input.source(close, "Source")
+// plot(i_src)
+
+
+
+
+// //@version=6
+// indicator("input.string", overlay=true)
+// i_text = input.string("Hello!", "Message")
+// l = label.new(bar_index, high, i_text)
+// label.delete(l[1])
+
+
+// //@version=6
+// indicator("input.symbol", overlay=true)
+// i_sym = input.symbol("DELL", "Symbol")
+// s = request.security(i_sym, 'D', close)
+// plot(s)
+
+
+
+
+// //@version=6
+// indicator("input.time", overlay=true)
+// i_date = input.time(timestamp("20 Jul 2021 00:00 +0300"), "Date")
+// l = label.new(i_date, high, "Date", xloc=xloc.bar_time)
+// label.delete(l[1])
+
+
+
+// //@version=6
+// indicator("input.timeframe", overlay=true)
+// i_res = input.timeframe('D', "Resolution", options=['D', 'W', 'M','240'])
+// s = request.security("AAPL", i_res, close)
+// plot(s)
+
+
+
+
+
+
+// //@version=6
+// indicator("line.all")
+// //delete all lines
+// line.new(bar_index - 10, close, bar_index, close)
+// a_allLines = line.all
+// if array.size(a_allLines) > 0
+//     for i = 0 to array.size(a_allLines) - 1
+//         line.delete(array.get(a_allLines, i))
+
+
+
+
+
+// //@version=6
+// strategy("`session.isfirstbar` Example", overlay = true)
+// longCondition = year >= 2022
+// // Place a long order at the `close` of the trading session's first bar.
+// if session.isfirstbar and longCondition 
+//     strategy.entry("Long", strategy.long)
+
+// // Close the long position at the `close` of the trading session's last bar.
+// if session.islastbar and barstate.isconfirmed
+//     strategy.close("Long", immediately = true)
+
+
+// //@version=6
+// indicator("syminfo simple")
+// //@variable A table containing information about a company's employees, shareholders, and shares.
+// var result_table = table.new(position = position.top_right, columns = 2, rows = 5, border_width = 1)
+// if barstate.islastconfirmedhistory
+//     // Add header cells
+//     table.cell(table_id = result_table, column = 0, row = 0, text = "name")
+//     table.cell(table_id = result_table, column = 1, row = 0, text = "value")
+//     // Add employee info cells.
+//     table.cell(table_id = result_table, column = 0, row = 1, text = "employees")
+//     table.cell(table_id = result_table, column = 1, row = 1, text = str.tostring(syminfo.employees))
+//     // Add shareholder cells.
+//     table.cell(table_id = result_table, column = 0, row = 2, text = "shareholders")
+//     table.cell(table_id = result_table, column = 1, row = 2, text = str.tostring(syminfo.shareholders))
+//     // Add float shares outstanding cells.
+//     table.cell(table_id = result_table, column = 0, row = 3, text = "shares_outstanding_float")
+//     table.cell(table_id = result_table, column = 1, row = 3, text = str.tostring(syminfo.shares_outstanding_float))
+//     // Add total shares outstanding cells.
+//     table.cell(table_id = result_table, column = 0, row = 4, text = "shares_outstanding_total")
+//     table.cell(table_id = result_table, column = 1, row = 4, text = str.tostring(syminfo.shares_outstanding_total))
+
+
+//@version=6
+strategy("strategy.cash", overlay = true, default_qty_value = 50, default_qty_type = strategy.cash, initial_capital = 1000000)
+
+if bar_index == 0
+    // As ‘qty’ is not defined, the previously defined values for the `default_qty_type` and `default_qty_value` parameters are used to enter trades, namely 50 units of cash in the currency of `strategy.account_currency`.
+    // `qty` is calculated as (default_qty_value)/(close price). If current price is $5, then qty = 50/5 = 10.
+    strategy.entry("EN", strategy.long)
+if bar_index == 2
+    strategy.close("EN")
