@@ -1,0 +1,278 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © sdlc
+
+//@version=6
+strategy("PineScriptMastery.com | Buy/Sell Stop Orders", overlay=true,default_qty_type = strategy.cash,default_qty_value =5000.00,initial_capital = 30000.00 )
+tfStr = timeframe.period
+tz = "America/New_York"
+//Number of candles each day based on timeframe (16 hours per day)
+CANDLE_LENGTH_DAILY = switch tfStr
+    "1"     => 960
+    "3"     => 320
+    "5"     => 192
+    "15"    => 64
+    "30"    => 32
+    "60"    =>16
+    "240"   =>4
+    "1D"    =>1
+
+//##################################################################### INPUT SETTINGS  #################################################################################################
+//groups
+group1 = "Market Begin(hour/minute)"
+group2="Market Close (Hour/minute)"
+group3 = "ACD Opening Range"
+group4="Show Pivots"
+group5="Bollinger"
+group6="strategy"
+//acd inputs
+//*************************************************************** pivot Input  *****************************************************************
+isPivot=input.bool(false,'Show 3Days pivot','This is the 3 days pivot based on max high , max low and last closed,A=(max+low+closed)/3, B(max+low)/2, delta=|A-B|, up=A+d, down=A-d, level=A',group = group4)
+isAcd=input.bool(true,'Show ACD lines','show and hide acd lines',group = group4)
+isBollinger=input.bool(true,'Show Bollinger','show and hide Bollinger lines',group = group4)
+isSignalling=input.bool(false,'signal','acd/bollinger',group = group4)
+
+//************************************************ START TIME  input *****************************************************************
+startHour = input.int(9, title="Market Begin Hour(0-23)", minval=0, maxval=23,group = group1)
+startMinutes = input.int(30, title="Market Begin Minutes(0-59)", minval=0, maxval=59,group = group1)
+
+//************************************************ ENd TIME  input *****************************************************************
+endHour = input.int(16, title="Market Close Hour(0-23)", minval=0, maxval=23,group = group2)
+endMinutes = input.int(0, title="Market Close Minutes(0-59)", minval=0, maxval=59,group = group2)
+
+//************************************************ OP Range Input *****************************************************************
+opDuration = input(9, title="Opening Range",group = group3) // default is 15 minutes
+
+//************************************************ ACD Level input *****************************************************************
+atrLength = input.int(20, title="ATR (default 20 days)",group = group3)
+A_weight = input(0.10, title="A level weight (10 % default)",group = group3) // default is 10 percent
+C_weight = input(0.20, title="C level weight (20 % default)",group = group3) // default is 20 percent
+
+//strategy inputs
+float INPUT_SL_DISTANCE     = input.float(1, "SL Distance By ATR", display=display.none,group = group6)
+int MARKET_DEPTH         = input.int(5, "Market Depth(1W)", display=display.none,group = group6)
+//######################################################################END OF INPUT SETTINGS#############################################################################################
+
+//base logic
+
+CANDLE_DEPTH_NUMBER =CANDLE_LENGTH_DAILY*MARKET_DEPTH
+
+//##################################################################### ACD START ######################################################################################################## 
+//##################################################################### ACD START ######################################################################################################## 
+
+//******************* CALCULATE Time and Range (EPOCH ) **************************************************************************************
+startTime = timestamp(tz, year(time), month(time), dayofmonth(time), startHour, startMinutes)
+endTime = timestamp(tz, year(time), month(time), dayofmonth(time), endHour, endMinutes)
+openingRangeEnd = startTime + opDuration * 60 * 1000
+
+
+// ******************************* ACD Predicates ************************************************************************************************
+beforeSession = time < startTime
+afterSession = time> endTime
+newDay = ta.change(dayofmonth(time)) != 0
+
+
+//***********************************************  OP RANGE Configuration*****************************************************************************
+//Define op high and low
+var float openRangeHigh = na
+var float openRangeLow = na
+if (newDay)
+    openRangeHigh := na
+    openRangeLow := na
+if  beforeSession or afterSession
+    openRangeHigh := na
+    openRangeLow := na
+if (time >= startTime and time <= openingRangeEnd )
+    openRangeHigh := na(openRangeHigh) ? high : math.max(openRangeHigh, high)
+    openRangeLow := na(openRangeLow) ? low : math.min(openRangeLow, low)
+
+
+// Find ATR simle range and multiplies to A_weight
+dailyATR = request.security(syminfo.tickerid, "D", ta.atr(atrLength))
+
+
+//************************************************** define A  levels ********************************************************************
+
+A_LEVEL=dailyATR[1]*A_weight
+var float A_Up = na
+var float A_Down = na
+if (time >= startTime and time <= openingRangeEnd and not beforeSession and not afterSession)
+    A_Up := openRangeHigh + A_LEVEL
+    A_Down := openRangeLow - A_LEVEL
+
+//************************************************** define C  levels ********************************************************************
+C_Level=dailyATR[1]*C_weight
+var float C_Up = na
+var float C_Down = na
+if (time >= startTime and time <= openingRangeEnd and not (beforeSession and afterSession))
+    C_Up := openRangeHigh + C_Level
+    C_Down := openRangeLow - C_Level
+
+
+
+//************************************************************ plot OP *****************************************************************************************
+t1= plot(((isAcd) and time >= openingRangeEnd and time <= endTime) ? openRangeHigh : na, title="OP^", color=color.blue, linewidth=1, style=plot.style_linebr)
+t2= plot(((isAcd)  and time >= openingRangeEnd and time <= endTime) ? openRangeLow : na, title="OP!", color=color.blue, linewidth=1, style=plot.style_linebr)
+fill(t1, t2, color=color.rgb(156, 156, 156, 98)) 
+
+//******************************************* plot A levels ***************************************************************************************************** 
+a1=plot(((isAcd)  and time >= openingRangeEnd and time <= endTime) ? A_Up : na, title="A^", color=color.rgb(232, 211, 49), linewidth=1, style=plot.style_linebr)
+a2=plot(((isAcd)  and time >= openingRangeEnd and time <= endTime) ? A_Down : na, title="A!", color=color.rgb(232, 211, 49), linewidth=1, style=plot.style_linebr)
+// fill(a1, a2, color=color.rgb(156, 156, 156, 98)) 
+
+//************************************************* PLOT C LEVELs ****************************************************************************************************
+c1=plot(((isAcd)  and time >= openingRangeEnd and time <= endTime) ? C_Up : na, title="C^", color=color.rgb(239, 238, 223), linewidth=2, style=plot.style_linebr)
+c2=plot(((isAcd)  and time >= openingRangeEnd and time <= endTime) ? C_Down : na, title="C!", color=color.rgb(239, 238, 223), linewidth=2, style=plot.style_linebr)
+fill(c1, c2, color=color.rgb(156, 156, 156, 89)) 
+
+// ********************************************** 3 Days ACD Pivots  **************************************************************************
+
+// Define the high, low, and close of the previous 3 days (excluding today)
+prevHigh = request.security(syminfo.tickerid, 'D', high[1],lookahead = barmerge.lookahead_on)  // High of the previous day
+prevHigh2 = request.security(syminfo.tickerid, "1D", high[2],lookahead = barmerge.lookahead_on) // High of the day before previous
+prevHigh3 = request.security(syminfo.tickerid, "1D", high[3],lookahead = barmerge.lookahead_on) // High of 3 days ago
+prevLow = request.security(syminfo.tickerid, "1D", low[1],lookahead = barmerge.lookahead_on)    // Low of the previous day
+prevLow2 = request.security(syminfo.tickerid, "1D", low[2],lookahead = barmerge.lookahead_on)   // Low of the day before previous
+prevLow3 = request.security(syminfo.tickerid, "1D", low[3],lookahead = barmerge.lookahead_on)   // Low of 3 days ago
+prevClose = request.security(syminfo.tickerid, "1D", close[1],lookahead = barmerge.lookahead_on) // Close of the previous day
+
+//************************************************** Calculate Pivot Highest High and Lowest Low ********************************************************************
+var float highestHigh = na
+var float lowestLow = na
+if (time >= startTime and time <= openingRangeEnd and not (beforeSession and afterSession))
+    highestHigh := math.max(prevHigh, math.max(prevHigh2, prevHigh3))  // Highest high from the last 3 days
+    lowestLow := math.min(prevLow, math.min(prevLow2, prevLow3))       // Lowest low from the last 3 days
+
+var float A=na
+var float B=na
+var float d=na
+if (time >= startTime and time <= openingRangeEnd and not (beforeSession and afterSession))   
+    // Calculate A, B, and d
+    A := (highestHigh + lowestLow + prevClose) / 3
+    B := (highestHigh + lowestLow) / 2
+    d := math.abs(A - B)
+//************************************************** Pivot (Level UP/Down and Set) ********************************************************************
+var float level=na
+var float levelUp=na
+var float levelDown=na
+if (time >= startTime and time <= openingRangeEnd and not (beforeSession and afterSession))   
+    levelUp:=A + d
+    levelDown:=A-d
+    level:=A
+//*********** display conditions predicate ****************************
+   
+
+p1=plot( isPivot and (time >= openingRangeEnd and time <= endTime) ? levelUp : na, color=color.rgb(211, 224, 212, 68), linewidth=4, title="PV^", style=plot.style_linebr,display=display.pane )
+p0=plot(isPivot and (time >= openingRangeEnd and time <= endTime)  ? level : na, color=color.rgb(211, 224, 212, 82), linewidth=4, title="PV", style=plot.style_linebr,display=display.pane )
+p2= plot(isPivot and (time >= openingRangeEnd and time <= endTime) ? levelDown : na, color=color.rgb(211, 224, 212, 80), linewidth=4, title="Pv!", style=plot.style_linebr,display=display.pane )
+//******************************************************* END OF ACD ***********************************************************************
+
+
+//###################### Bollinger BAND ##################################################################
+length = input.int(80,title = "length",group = group5)
+mult   = input.float(1.5,title = "std deviation",group = group5)
+timeframe=input.string("60",title = "timeframe (minutes) ",group = group5)
+
+// === Get 30-minute WMA and StdDev via request.security ===
+basis = request.security(syminfo.tickerid, timeframe, ta.ema(close,length))
+stdev = request.security(syminfo.tickerid, timeframe, ta.stdev(close, length))
+
+upper = basis + mult * stdev
+lower = basis - mult * stdev
+
+// === Only show during regular session ===
+// session = syminfo.session 
+// isRegular= session =='extended'
+
+// === Conditionally plot only during regular hours ===
+bb=plot(isBollinger? basis : na, title="Basis", color=color.new(color.orange, 60),linewidth = 2,display = display.pane)
+u=plot(isBollinger ? upper : na, title="Upper", color=color.green,display = display.none)
+l= plot(isBollinger? lower : na, title="Lower", color=color.red,display = display.none)
+// fill(u, l , color=color.new(color.lime, 91))
+fill(u, l, color = (close < basis) ? color.new(color.red, 85) : color.new(color.lime, 91))
+
+
+//######################################### END OF ACD #######################################################################
+//######################################### END OF ACD #######################################################################
+//######################################### END OF ACD #######################################################################
+
+//###################### ACD SIGNALLING #######################################################################################
+//###################### ACD SIGNALLING #######################################################################################
+
+allowedSymbols = array.from("AAPL", "GOOG", "TSLA", "AMD","NVDA","TQQQ")
+// allowedSymbols = array.from("TSLA")
+// ##################### UP conditions #######################
+[tfOpen, tfClose] = request.security(syminfo.tickerid, "1", [open, close])
+isGreen = tfClose > tfOpen
+isRed   = tfClose < tfOpen
+middlePrice=(tfOpen+tfClose)/2
+middleOpenning=(openRangeHigh+openRangeLow)/2
+opHighSignal = false
+bollUP = false
+opLowSignal = false
+bollDown = false
+
+
+//###################### END OF ACD SIGNALLING   #######################################################################################
+//**************** strategy signalling *****************************************************************************************
+
+//! Indicator values
+float atrValue              = ta.atr(14)
+float movingAverage         = ta.sma(close, CANDLE_DEPTH_NUMBER)
+float channelHigh           = ta.highest(high, CANDLE_DEPTH_NUMBER)
+float channelLow            = ta.lowest(low, CANDLE_DEPTH_NUMBER)
+
+//! Variables
+var float tradeStopLoss     = na
+float slDistance            = atrValue * INPUT_SL_DISTANCE
+
+//! Conditions
+bool canTakeTrade           = strategy.position_size == 0 and not na(atrValue)
+
+//! Check entry conditions
+if (canTakeTrade)
+    //! Reset SL/TP before placing a new trade
+    tradeStopLoss := na
+
+    //! LONG ENTRY
+    if (close > movingAverage)
+        //! Place buy stop order
+        strategy.order("Long", strategy.long, stop=channelHigh[1] + atrValue)
+    else
+        //! Cancel pending buy order
+        strategy.cancel("Long") 
+
+    //! SHORT ENTRY
+    if (close < movingAverage)
+        //! Place sell stop order
+        strategy.entry("Short", strategy.short, stop=channelLow[1] - atrValue)
+    else
+        //! Cancel pending sell order
+        strategy.cancel("Short")
+
+//! Long exit
+if (strategy.position_size > 0)
+    //! UPDATE LONG TRAILING STOP ON BAR CLOSES 
+    if (barstate.isconfirmed)
+        float newLongSL = low - slDistance
+        if (newLongSL > tradeStopLoss or na(tradeStopLoss))
+            tradeStopLoss := newLongSL
+
+    //! LONG STOP LOSS
+    strategy.exit("Exit Long", from_entry="Long", stop=tradeStopLoss)
+
+//! Short exit
+if (strategy.position_size < 0)
+    //! UPDATE SHORT TRAILING STOP ON BAR CLOSES
+    if (barstate.isconfirmed)
+        float newShortSL = high + slDistance
+        if (newShortSL < tradeStopLoss or na(tradeStopLoss))
+            tradeStopLoss := newShortSL
+
+    //! SHORT STOP LOSS
+    strategy.exit("Exit Short", from_entry="Short", stop=tradeStopLoss)
+
+//! Drawing/debug
+plot(tradeStopLoss, "SL", color=color.red, style=plot.style_linebr)
+plot(movingAverage, "MA", color=color.blue)
+plot(channelHigh[1], "Channel High", color=color.yellow)
+plot(channelLow[1], "Channel Low", color=color.yellow)

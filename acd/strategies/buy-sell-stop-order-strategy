@@ -1,0 +1,73 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ZenAndTheArtOfTrading / PineScriptMastery.com
+// @version=6
+
+// BREAKOUT STOP ORDERS
+
+strategy("PineScriptMastery.com | Buy/Sell Stop Orders", overlay=true)
+
+//! User inputs 
+float INPUT_SL_DISTANCE     = input.float(1, "SL Distance", display=display.none)
+int INPUT_MA_LENGTH         = input.int(50, "MA Length", display=display.none)
+
+//! Indicator values
+float atrValue              = ta.atr(14)
+float movingAverage         = ta.sma(close, INPUT_MA_LENGTH)
+float channelHigh           = ta.highest(high, 50)
+float channelLow            = ta.lowest(low, 50)
+
+//! Variables
+var float tradeStopLoss     = na
+float slDistance            = atrValue * INPUT_SL_DISTANCE
+
+//! Conditions
+bool canTakeTrade           = strategy.position_size == 0 and not na(atrValue)
+
+//! Check entry conditions
+if (canTakeTrade)
+    //! Reset SL/TP before placing a new trade
+    tradeStopLoss := na
+
+    //! LONG ENTRY
+    if (close > movingAverage)
+        //! Place buy stop order
+        strategy.order("Long", strategy.long, stop=channelHigh[1] + atrValue)
+    else
+        //! Cancel pending buy order
+        strategy.cancel("Long") 
+
+    //! SHORT ENTRY
+    if (close < movingAverage)
+        //! Place sell stop order
+        strategy.entry("Short", strategy.short, stop=channelLow[1] - atrValue)
+    else
+        //! Cancel pending sell order
+        strategy.cancel("Short")
+
+//! Long exit
+if (strategy.position_size > 0)
+    //! UPDATE LONG TRAILING STOP ON BAR CLOSES 
+    if (barstate.isconfirmed)
+        float newLongSL = low - slDistance
+        if (newLongSL > tradeStopLoss or na(tradeStopLoss))
+            tradeStopLoss := newLongSL
+
+    //! LONG STOP LOSS
+    strategy.exit("Exit Long", from_entry="Long", stop=tradeStopLoss)
+
+//! Short exit
+if (strategy.position_size < 0)
+    //! UPDATE SHORT TRAILING STOP ON BAR CLOSES
+    if (barstate.isconfirmed)
+        float newShortSL = high + slDistance
+        if (newShortSL < tradeStopLoss or na(tradeStopLoss))
+            tradeStopLoss := newShortSL
+
+    //! SHORT STOP LOSS
+    strategy.exit("Exit Short", from_entry="Short", stop=tradeStopLoss)
+
+//! Drawing/debug
+plot(tradeStopLoss, "SL", color=color.red, style=plot.style_linebr)
+plot(movingAverage, "MA", color=color.blue)
+plot(channelHigh[1], "Channel High", color=color.yellow)
+plot(channelLow[1], "Channel Low", color=color.yellow)
