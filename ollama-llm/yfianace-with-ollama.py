@@ -49,10 +49,11 @@ def analyze_stock_with_news(ticker_symbol: str, model_name: str = "qwen3.5:lates
     recent_headlines = []
     if news_items:
         for item in news_items[:5]:  # Limit to top 5 news stories
-            title = item.get("title")
-            publisher = item.get("publisher")
-            recent_headlines.append(f"- {title} ({publisher})")
+            title = item.get("content").get("title")
+            url = item.get("content").get('canonicalUrl')['url']
+            recent_headlines.append(f"- title: {title} [Read more]({url})")
     else:
+        print("No recent news headlines available.")
         recent_headlines.append("No recent news headlines available.")
 
     # Format a compact dataset for the LLM prompt
@@ -66,6 +67,7 @@ def analyze_stock_with_news(ticker_symbol: str, model_name: str = "qwen3.5:lates
         "5_day_moving_avg": round(history["MA5"].iloc[-1], 2) if not history["MA5"].empty else None,
         "20_day_moving_avg": round(history["MA20"].iloc[-1], 2) if not history["MA20"].empty else None,
     }
+    print(f"Market Summary: {json.dumps(recent_headlines, indent=2)}")
 
     # 4. Formulate the comprehensive prompt
     prompt = f"""
@@ -76,7 +78,7 @@ def analyze_stock_with_news(ticker_symbol: str, model_name: str = "qwen3.5:lates
     
     Recent News Headlines:
     {"\n".join(recent_headlines)}
-    
+    Check provided url to verify the news headlines.
     Provide:
     1. A technical summary based on the moving averages and RSI (note if overbought >70 or oversold <30).
     2. A sentiment assessment blending the technical indicators with the recent news headlines.
@@ -100,5 +102,5 @@ def analyze_stock_with_news(ticker_symbol: str, model_name: str = "qwen3.5:lates
 
 if __name__ == "__main__":
     # Ensure the model name exactly matches your downloaded Ollama model
-    analyze_stock_with_news(ticker_symbol="AAPL", model_name="qwen3.5:latest")
-    analyze_stock_with_news(ticker_symbol="AAPL", model_name="gemma4:e2b")
+    analyze_stock_with_news(ticker_symbol="TSLA", model_name="qwen3.5:latest")
+    # analyze_stock_with_news(ticker_symbol="AAPL", model_name="gemma4:e2b")

@@ -5,10 +5,11 @@ from ibapi.wrapper import *
 import time 
 import threading
 from util.appenv import APPENV
-class TestApp (EClient,EWrapper):
+class TestApp (EClient,EWrapper,APPENV):
     def __init__(self):
         EClient.__init__(self,self)
-        
+        APPENV.__init__(self)
+
     def nextValidId(self,orderId):
         self.orderId=orderId
     
@@ -30,8 +31,7 @@ class TestApp (EClient,EWrapper):
         print(f'reqId: {reqId}, time: {errorTime}, errorCode: {errorCode}, errorString: {errorString}, orderReject: {advanceOrderReject}')
         
 app=TestApp()
-env=APPENV()
-app.connect(env.host, env.port, env.client_id)
+app.connect(app.host, app.port, app.client_id)
 
 threading.Thread(target=app.run).start()
 time.sleep(1)
