@@ -28,7 +28,7 @@ class TradingApp(EClient,EWrapper,APPENV):
             reqId=reqId,
             contract=contract,
             endDateTime='',
-            durationStr='6 D',
+            durationStr='365 D',
             barSizeSetting='1 hour',
             whatToShow='MIDPOINT',
             useRTH=0,
@@ -52,7 +52,7 @@ class TradingApp(EClient,EWrapper,APPENV):
         df=self.data[reqId]
         # timestamp = self.parse_ib_date(bar.date)
         
-        df.loc[bar.date,['high','low','close']]=[bar.high,bar.low,bar.close]
+        df.loc[bar.date,['open','high','low','close','volume']]=[bar.open,bar.high,bar.low,bar.close,bar.volume]
         df=df.astype(float)
         self.data[reqId]=df
  
@@ -64,3 +64,7 @@ class TradingApp(EClient,EWrapper,APPENV):
         contract.exchange='SMART'
         contract.currency='USD'
         return contract
+    
+    
+app=TradingApp()
+app.connect(app.host, app.port, app.client_id)

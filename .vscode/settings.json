@@ -4,16 +4,16 @@
     "editor.fontSize": 22,
     "editor.fontLigatures": true,
 
-    "terminal.integrated.env.osx": {
-          "CONDA_DEFAULT_ENV": "stock",
-          "CONDA_PREFIX": "/opt/anaconda3/envs/stock",
-          "PATH": "/opt/anaconda3/envs/stock/bin:${env:PATH}"
-        },
-        "terminal.integrated.fontSize": 14,
-        "terminal.integrated.fontWeightBold": "bold",
-        "editor.fontWeight": "bold",
-        "python.analysis.extraPaths": [
-          "./ibt/IBJts/source/pythonclient"
-        ]
+    // "terminal.integrated.env.osx": {
+    //       "CONDA_DEFAULT_ENV": "stock",
+    //       "CONDA_PREFIX": "/opt/anaconda3/envs/stock",
+    //       "PATH": "/opt/anaconda3/envs/stock/bin:${env:PATH}"
+    //     },
+    //     "terminal.integrated.fontSize": 14,
+    //     "terminal.integrated.fontWeightBold": "bold",
+    //     "editor.fontWeight": "bold",
+    //     "python.analysis.extraPaths": [
+    //       "./ibt/IBJts/source/pythonclient"
+    //     ]
       
 }
