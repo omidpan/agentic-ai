@@ -5,3 +5,6 @@ __pycache__
 *.pyc
 *IBJts
 .DS_Store
+*.csv
+*.pkl
+*.keras

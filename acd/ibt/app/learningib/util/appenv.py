@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 ###### This is relative path and need to be handled correctly when running the script from different locations.
 # The following line changes the current working directory to the script's directory.
-os.chdir('<from / to learningibt directory>')
+os.chdir('<from / to learningibt directory> or use BASE_DIR = Path(__file__).resolve().parent and os.chdir(BASE_DIR) to set the current working directory to the script's directory.')
 class APPENV():
     '''
     Add os.chdir(<from / to learningibt>) to the top of your script to ensure

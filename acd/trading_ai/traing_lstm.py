@@ -1,91 +1,143 @@
 # filename: train_lstm.py
+'''
+how to run the file python  traing_lstm.py -s nvda  -bs "1 hour"
+argument -s is the stock symbol, argument -bs is the bar size of historical data.
+This script trains an LSTM model for stock price 
+prediction using historical data and technical indicators.
+
+'''
+
+import os
+import json
 import numpy as np
 import pandas as pd
 import joblib
-import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
+from tensorflow.keras import layers, callbacks
 from sklearn.preprocessing import MinMaxScaler
-import yfinance as yf
+import argparse
+from config import DATA_DIR
+parser = argparse.ArgumentParser(description="Process a stock symbol.")
+parser.add_argument("-s" ,"--symbol",
+                    type=str,
+                    required=True,
+                    help="The stock symbol to process. default is NVDA.", 
+                    nargs='?', default="NVDA")
+parser.add_argument("-bs", "--bar_size",
+                    type=str,
+                    required=True,
+                    help="candle size of historical data. default is 1 hour.", 
+                    nargs='?', default="1 hour")
+args = parser.parse_args()
+stock_symbol = args.symbol.lower()
+bar_size = args.bar_size
+from config import (
+    TICKER, PERIOD, INTERVAL, WINDOW_SIZE, HORIZON,
+    TRAIN_FRAC, VAL_FRAC, MODEL_PATH, SCALER_PATH, FEATURE_META_PATH, RANDOM_SEED,
+    DATA_DIR,MODEL_PATH, SCALER_PATH, FEATURE_META_PATH, RANDOM_SEED,
+)
+from feature_engineering import add_technical_indicators, prepare_features_and_target
+from utils.utils import set_seeds, download_raw_data, chronological_split, create_sequences
 
-# Set random seed for reproducibility
-np.random.seed(2505)
-tf.random.set_seed(2505)
+set_seeds(RANDOM_SEED)
 
-def download_and_preprocess_data(ticker='IONQ', period='730d', interval='1h'):
-    print(f"Downloading historical data for {ticker}...")
-    df = yf.download(ticker, period=period, interval=interval, prepost=True)
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.droplevel('Ticker')
-        
-    df.index = df.index.tz_localize(None)
-    df.index = df.index.astype('int64') // 10**9
-    
-    # Reorder columns to ensure 'Close' is last
-    new_order = [col for col in df.columns if col != 'Close'] + ['Close']
-    df = df[new_order]
-    
-    # Scale data
-    scaler = MinMaxScaler()
-    scaled_array = scaler.fit_transform(df.values)
-    df_scaled = pd.DataFrame(scaled_array, columns=df.columns, index=df.index)
-    
-    return df_scaled, scaler
 
-def create_sequences(df, window_size=30):
-    X, Y = [], []
-    data_vals = df.values
-    for i in range(len(data_vals) - window_size):
-        X.append(data_vals[i:i + window_size, :-1]) # All features except Close
-        Y.append(data_vals[i + window_size, -1])  # Close price target
-    return np.array(X), np.array(Y)
+def directional_accuracy(y_true, y_pred):
+    """Fraction of predictions whose sign matches the actual return's sign."""
+    return float(np.mean(np.sign(y_true) == np.sign(y_pred)))
+
+
+def naive_baseline_accuracy(y_true):
+    """
+    Sanity check: what accuracy would you get by just always predicting the
+    sign of the PREVIOUS realized return (a persistence/random-walk model)?
+    If your LSTM's directional accuracy isn't meaningfully above this AND
+    above 50%, it isn't demonstrating real predictive edge yet.
+    """
+    prev_sign = np.sign(y_true[:-1])
+    actual_sign = np.sign(y_true[1:])
+    return float(np.mean(prev_sign == actual_sign))
+
+
 
 def main():
-    ticker_symbol = 'IONQ'
-    window_size = 30
-    
-    df_scaled, scaler = download_and_preprocess_data(ticker_symbol)
-    
-    # Save the scaler for realtime usage
-    joblib.dump(scaler, 'scaler.pkl')
-    print("Scaler saved to scaler.pkl")
-    
-    X, Y = create_sequences(df_scaled, window_size=window_size)
-    print(f'Dimension of X: {X.shape}, Dimension of Y: {Y.shape}')
-    
-    # Train/Test Split (90/10)
-    threshold = int(0.9 * len(X))
-    trainX, trainY = X[:threshold], Y[:threshold]
-    testX, testY = X[threshold:], Y[threshold:]
-    
-    print(f'Training Length: {trainX.shape}, Testing Length: {testX.shape}')
-    
-    # Build LSTM Model
+    os.makedirs(os.path.dirname(MODEL_PATH) or '.', exist_ok=True)
+
+    print(f"loading data {TICKER}...")
+    df = pd.read_csv(f"{DATA_DIR}/{stock_symbol}_{bar_size}_features.csv")
+    df_full, feature_columns, _ = prepare_features_and_target(df, horizon=HORIZON)
+
+    # --- Split chronologically BEFORE fitting the scaler (avoids leakage) ---
+    train_df, val_df, test_df = chronological_split(df_full, TRAIN_FRAC, VAL_FRAC)
+    print(f"Train/Val/Test rows: {len(train_df)}/{len(val_df)}/{len(test_df)}")
+
+    scaler = MinMaxScaler()
+    scaler.fit(train_df[feature_columns].values)  # fit on TRAIN ONLY
+
+    def transform(split_df):
+        scaled_feats = scaler.transform(split_df[feature_columns].values)
+        return scaled_feats, split_df['Target_Return'].values
+
+    train_X_scaled, train_Y = transform(train_df)
+    val_X_scaled, val_Y = transform(val_df)
+    test_X_scaled, test_Y = transform(test_df)
+
+    joblib.dump(scaler, SCALER_PATH)
+    with open(FEATURE_META_PATH, 'w') as f:
+        json.dump({
+            'feature_columns': feature_columns,
+            'window_size': WINDOW_SIZE,
+            'horizon': HORIZON
+        }, f, indent=2)
+    print(f"Scaler saved to {SCALER_PATH}, feature meta saved to {FEATURE_META_PATH}")
+
+    trainX, trainY = create_sequences(pd.DataFrame(train_X_scaled), pd.Series(train_Y), WINDOW_SIZE)
+    valX, valY = create_sequences(pd.DataFrame(val_X_scaled), pd.Series(val_Y), WINDOW_SIZE)
+    testX, testY = create_sequences(pd.DataFrame(test_X_scaled), pd.Series(test_Y), WINDOW_SIZE)
+
+    print(f"Train seq: {trainX.shape}, Val seq: {valX.shape}, Test seq: {testX.shape}")
+
     model = keras.Sequential([
-        layers.LSTM(units=30, activation='tanh', use_bias=True, input_shape=(trainX.shape[1], trainX.shape[2])),
+        layers.LSTM(units=64, activation='tanh', return_sequences=True,
+                    input_shape=(trainX.shape[1], trainX.shape[2])),
         layers.Dropout(rate=0.2),
+        layers.LSTM(units=32, activation='tanh'),
+        layers.Dropout(rate=0.2),
+        layers.Dense(16, activation='relu'),
         layers.Dense(1)
     ])
-    
-    model.compile(loss='mse', optimizer='adam', metrics=['mae', 'mape'])
+
+    model.compile(loss='mse', optimizer='adam', metrics=['mae'])
     model.summary()
-    
-    history = model.fit(
+
+    early_stop = callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True)
+    checkpoint = callbacks.ModelCheckpoint(MODEL_PATH, monitor='val_loss', save_best_only=True)
+
+    model.fit(
         trainX, trainY,
+        validation_data=(valX, valY),
         shuffle=False,
-        epochs=50,
+        epochs=100,
         batch_size=32,
-        validation_split=0.20,
+        callbacks=[early_stop, checkpoint],
         verbose=1
     )
-    
-    # Evaluate model on test set
-    test_loss = model.evaluate(testX, testY)
-    print(f"Test Loss (MSE): {test_loss[0]}")
-    
-    # Save the model
-    model.save('lstm_model.keras')
-    print("Model saved to lstm_model.keras")
+
+    test_loss, test_mae = model.evaluate(testX, testY, verbose=0)
+    test_pred = model.predict(testX, verbose=0).flatten()
+    dir_acc = directional_accuracy(testY, test_pred)
+    baseline_acc = naive_baseline_accuracy(testY)
+
+    print(f"Test MSE: {test_loss:.6f} | Test MAE (return): {test_mae:.6f}")
+    print(f"Directional accuracy on test set: {dir_acc*100:.2f}%")
+    print(f"Naive persistence baseline directional accuracy: {baseline_acc*100:.2f}%")
+    print("If the model's directional accuracy isn't clearly above both 50% "
+          "and the naive baseline, treat any backtest P&L with suspicion --"
+          "it likely isn't capturing real predictive signal yet.")
+
+    model.save(MODEL_PATH)
+    print(f"Model saved to {MODEL_PATH}")
+
 
 if __name__ == '__main__':
     main()

@@ -1,0 +1,22 @@
+{
+  "feature_columns": [
+    "datetime",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "SMA_5",
+    "SMA_20",
+    "EMA_12",
+    "EMA_26",
+    "MACD",
+    "RSI_14",
+    "Volatility_10",
+    "ROC_5",
+    "BB_Width",
+    "ATR_14"
+  ],
+  "window_size": 30,
+  "horizon": 1
+}

@@ -1,103 +1,115 @@
 # filename: predict_realtime.py
 import json
+import time
 import numpy as np
 import pandas as pd
-import joblib
-from tensorflow import keras
+# pip install kafka-python
 from kafka import KafkaConsumer, KafkaProducer
-import yfinance as yf
-import time
 
-# Configurations
+from config import TICKER ,INTERVAL, WINDOW_SIZE, MODEL_PATH, SCALER_PATH, FEATURE_META_PATH
+from utils.utils import download_raw_data, load_model_and_scaler
+from feature_engineering import add_technical_indicators
+import argparse
+from config import DATA_DIR
+parser = argparse.ArgumentParser(description="Process a stock symbol.")
+parser.add_argument("-s" ,"--symbol",
+                    type=str,
+                    required=True,
+                    help="The stock symbol to process. default is NVDA.", 
+                    nargs='?', default="NVDA")
+parser.add_argument("-bs", "--bar_size",
+                    type=str,
+                    required=True,
+                    help="candle size of historical data. default is 1 hour.", 
+                    nargs='?', default="1 hour")
+args = parser.parse_args()
+
+# Access the value using dot notation
+stock_symbol = args.symbol.lower()
+bar_size = args.bar_size
 KAFKA_SERVER = 'localhost:9092'
 RAW_DATA_TOPIC = 'ionq_raw_candles'
 PREDICTION_TOPIC = 'ionq_predictions'
-TICKER = 'IONQ'
-WINDOW_SIZE = 30
 
-def load_artifacts():
-    print("Loading model and scaler...")
-    model = keras.models.load_model('lstm_model.keras')
-    scaler = joblib.load('scaler.pkl')
-    return model, scaler
+# Longest rolling lookback used in add_technical_indicators is 26 (EMA_26).
+# Keep extra buffer above WINDOW_SIZE so recomputed indicators are valid for
+# every row inside the model's input window -- otherwise the first several
+# rows of the window would carry NaN-derived indicators that training never saw.
+INDICATOR_LOOKBACK = 40
 
-def fetch_initial_window(ticker=TICKER, window_size=WINDOW_SIZE):
-    print("Fetching initial rolling window data...")
-    df = yf.download(ticker, period="5d", interval="1h", prepost=True)
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.droplevel('Ticker')
-    df.index = df.index.tz_localize(None)
-    
-    new_order = [col for col in df.columns if col != 'Close'] + ['Close']
-    df = df[new_order]
-    return df.tail(window_size)
+def fetch_initial_buffer(buffer_size):
+    print("Fetching initial init candle buffer...")
+    df = pd.read_csv(f"{DATA_DIR}/{stock_symbol}_{bar_size}_init.csv")
+    return df.tail(buffer_size)
+
 
 def main():
-    model, scaler = load_artifacts()
-    
-    # Setup Kafka Producer to push predictions
+    model, scaler, meta = load_model_and_scaler()
+    feature_columns = meta['feature_columns']
+    window_size = meta['window_size']
+    buffer_size = window_size + INDICATOR_LOOKBACK
+
     producer = KafkaProducer(
         bootstrap_servers=[KAFKA_SERVER],
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
-    
-    # Setup Kafka Consumer to read completed 1-hour candles
     consumer = KafkaConsumer(
         RAW_DATA_TOPIC,
         bootstrap_servers=[KAFKA_SERVER],
         auto_offset_reset='latest',
         enable_auto_commit=True,
+        group_id='ionq_predictor',
         value_deserializer=lambda x: json.loads(x.decode('utf-8'))
     )
-    
-    # Maintain rolling window buffer
-    rolling_df = fetch_initial_window()
+
+    raw_buffer = fetch_initial_buffer(buffer_size)
     print("Real-time prediction engine started. Listening for completed candles...")
-    
+
     for message in consumer:
+        print(f"Received candle: {message.value}")
         candle = message.value
-        # Expected candle format: {"Open": ..., "High": ..., "Low": ..., "Volume": ..., "Close": ...}
-        new_row = pd.DataFrame([candle], index=[pd.to_datetime(candle.get('Timestamp', time.time()), unit='s')])
-        
-        # Reorder columns to match training schema
-        new_order = [col for col in rolling_df.columns if col != 'Close'] + ['Close']
-        new_row = new_row[new_order]
-        
-        # Append and keep rolling window size limit
-        rolling_df = pd.concat([rolling_df, new_row]).iloc[-WINDOW_SIZE:]
-        
-        if len(rolling_df) < WINDOW_SIZE:
+        ts = pd.to_datetime(candle.get('datetime', time.time()), unit='s')
+        new_row = pd.DataFrame([{
+            'open': candle['open'], 'high': candle['high'],
+            'low': candle['low'], 'close': candle['close'],
+            'volume': candle['volume']
+        }], index=[ts])
+
+        raw_buffer = pd.concat([raw_buffer, new_row]).iloc[-buffer_size:]
+        if len(raw_buffer) < buffer_size:
+            continue  # not enough history yet for indicators + full window
+
+        # Recompute indicators the SAME way training does, so live features
+        # never silently diverge from what the model was trained on.
+        feat_df = add_technical_indicators(raw_buffer)
+        if len(feat_df) < window_size:
+            print("Not enough rows after adding indicators. Waiting for more data...")
             continue
-            
-        # Preprocess / Scale window using loaded scaler
-        scaled_values = scaler.transform(rolling_df.values)
-        
-        # Extract features (exclude Close target column which is last)
-        features = scaled_values[:, :-1]
-        X_input = np.expand_dims(features, axis=0) # Shape: (1, window_size, n_features)
-        
-        # Make Prediction
-        scaled_pred = model.predict(X_input, verbose=0)[0][0]
-        
-        # Inverse transform prediction to find absolute price change
-        # Construct a dummy array to invert scale specifically for the Close column
-        dummy_array = np.zeros((1, scaled_values.shape[1]))
-        dummy_array[0, -1] = scaled_pred
-        predicted_close = scaler.inverse_transform(dummy_array)[0, -1]
-        
-        current_close = rolling_df['Close'].iloc[-2] # Previous candle close
-        predicted_return = (predicted_close - current_close) / current_close
-        
+
+        window_feats = feat_df[feature_columns].values[-window_size:]
+        scaled_window = scaler.transform(window_feats)
+        X_input = np.expand_dims(scaled_window, axis=0)  # (1, window_size, n_features)
+
+        predicted_return = float(model.predict(X_input, verbose=0)[0][0])
+
+        # The window's last row IS the latest completed candle -- this is
+        # "current" price, not iloc[-2]. Using -2 (as the original code did)
+        # silently shifts every predicted return by one candle.
+        current_close = float(feat_df['close'].iloc[-1])
+        predicted_close = current_close * (1 + predicted_return)
+
         payload = {
             "timestamp": time.time(),
             "ticker": TICKER,
-            "current_close": float(current_close),
-            "predicted_close": float(predicted_close),
-            "predicted_return": float(predicted_return)
+            "current_close": current_close,
+            "predicted_close": predicted_close,
+            "predicted_return": predicted_return
         }
-        
+
         producer.send(PREDICTION_TOPIC, value=payload)
-        print(f"Published Prediction -> Return: {predicted_return*100:.2f}% | Current: {current_close} | Pred: {predicted_close}")
+        print(f"Published Prediction -> Return: {predicted_return*100:.2f}% | "
+              f"Current: {current_close:.2f} | Pred: {predicted_close:.2f}")
+
 
 if __name__ == '__main__':
     main()

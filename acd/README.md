@@ -56,6 +56,14 @@ Before connecting your trading application, confirm the following:
 - [ ] A test connection between your application and IB Gateway is successful.
 
 ---
+# how to check kafka topics and group running inside docker
+## check first  groups
+`docker exec -it local_kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list`
+## docker tracking for messages
+`docker exec -it local_kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+`
+## to analyze the health of message consumer and producer
+`docker exec -it local_kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group trading_strategy_group`
 
 ## Next Steps
 
