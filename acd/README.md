@@ -64,7 +64,10 @@ Before connecting your trading application, confirm the following:
 `
 ## to analyze the health of message consumer and producer
 `docker exec -it local_kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group trading_strategy_group`
-
+## These are most useful libraries in python for indicators and chart for data . 
+### conda install -c conda-forge mplfinance or pip install mplfinance for renko and kagi
+## conda install -c conda-forge pandas-ta or  pip install pandas_ta for (indicator like MACD,RSI ATR,..) https://github.com/aarigs/pandas-ta
+# pip install plotly  for better visualization, like Kagi and Renko
 ## Next Steps
 
 After completing this setup, you can proceed with developing your trading application using the IB API connection for:
