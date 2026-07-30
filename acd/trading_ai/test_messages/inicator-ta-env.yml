@@ -1,0 +1,9 @@
+name: indicator-ta
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - numpy=1.26.4
+  - pandas
+  - pandas-ta
+prefix: /Users/leo/miniconda3/envs/indicator-ta
