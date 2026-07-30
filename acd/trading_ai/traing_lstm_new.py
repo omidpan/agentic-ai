@@ -77,7 +77,66 @@ def naive_baseline_accuracy(y_true):
         return np.nan
 
     return float(np.mean(prev_sign[mask] == next_sign[mask]))
+def chronological_split(df: pd.DataFrame, train_frac=TRAIN_FRAC, val_frac=VAL_FRAC):
+    """
+    Splits a time-ordered dataframe into train/val/test by position, never
+    shuffling. Fit any scaler ONLY on the train slice this returns -- fitting
+    on the full dataset first (as the original code did) leaks test-period
+    statistics into training.
+    """
+    n = len(df)
+    train_end = int(n * train_frac)
+    val_end = int(n * (train_frac + val_frac))
+    return df.iloc[:train_end], df.iloc[train_end:val_end], df.iloc[val_end:]
+def create_sequences(feature_df: pd.DataFrame, target_series: pd.Series, window_size: int):
+    """
+    Builds rolling windows X (window_size x n_features) and matching targets Y.
+    X[i] uses rows [i : i+window_size) of features; Y[i] is the target value
+    aligned to the LAST row in that window (row i+window_size-1) -- i.e. the
+    return already computed from that candle to `horizon` candles later.
+    No future rows are read past that point.
+    """
+    X, Y = [], []
+    feat_vals = feature_df.values
+    targ_vals = target_series.values
+    for i in range(len(feat_vals) - window_size + 1):
+        X.append(feat_vals[i:i + window_size, :])
+        Y.append(targ_vals[i + window_size - 1])
+    return np.array(X), np.array(Y)
+def create_target(df: pd.DataFrame, horizon: int = 1) -> pd.DataFrame:
+    """
+    Adds a forward-looking percentage-return target column: the return from
+    the current row's close to the close `horizon` rows ahead.
 
+    This replaces predicting the raw close price level. Raw price is
+    non-stationary and an LSTM trained on it mostly learns to echo the last
+    known price (looks accurate on MSE, carries little real signal). The
+    forward return is stationary and is also what the trading strategy
+    actually consumes.
+    """
+    df = df.copy()
+    df['Target_Return'] = df['close'].shift(-horizon) / df['close'] - 1.0
+    df['Target'] = (df['Target_Return'] > 0).astype(int)
+    df.dropna(inplace=True)  # drops the last `horizon` rows (no future close yet)
+    return df
+def prepare_features_and_target(df: pd.DataFrame, horizon: int = 1):
+    """
+    Returns (df_full, feature_columns, raw_close).
+    - df_full contains all feature columns plus 'Target_Return'.
+    - feature_columns is every column except the target (this list gets
+      saved at training time and reused at inference time, so live feature
+      order/composition can never silently drift from what the model saw
+      during training).
+    - raw_close is the unscaled close series, aligned to df_full's index,
+      for use in live P&L / stop-loss calcs.
+    """
+    df = create_target(df, horizon=horizon)
+    raw_close = df['close'].copy()
+    feature_columns = [
+        c for c in df.columns
+        if c not in ['Target_Return', 'Target']]
+    
+    return df, feature_columns, raw_close
 
 
 def main():
@@ -110,7 +169,7 @@ def main():
 
     def transform(split_df):
         scaled_feats = scaler.transform(split_df[feature_columns].values)
-        return scaled_feats, split_df['Target_Return'].values
+        return scaled_feats, split_df['Target'].values
 
     train_X_scaled, train_Y = transform(train_df)
     val_X_scaled, val_Y = transform(val_df)
@@ -134,31 +193,45 @@ def main():
     model = keras.Sequential([
         layers.LSTM(units=64, activation='tanh', return_sequences=True,
                     input_shape=(trainX.shape[1], trainX.shape[2])),
-        layers.Dropout(rate=0.2),
+        layers.Dropout(rate=0.05),
         layers.LSTM(units=32, activation='tanh'),
-        layers.Dropout(rate=0.2),
+        layers.Dropout(rate=0.05),
         layers.Dense(16, activation='relu'),
-        layers.Dense(1)
+        layers.Dense(1, activation='sigmoid')
     ])
 
-    model.compile(loss='mse', optimizer='adam', metrics=['mae'])
+    model.compile(
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=[
+            'accuracy',
+            keras.metrics.AUC(name='auc')
+        ]
+    )
     model.summary()
 
     early_stop = callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True)
     checkpoint = callbacks.ModelCheckpoint(MODEL_PATH, monitor='val_loss', save_best_only=True)
-
+    reduce_lr = callbacks.ReduceLROnPlateau(
+        monitor="val_loss",
+        factor=0.5,
+        patience=3,
+        min_lr=1e-6,
+        verbose=1
+)
     model.fit(
         trainX, trainY,
         validation_data=(valX, valY),
         shuffle=False,
         epochs=100,
         batch_size=32,
-        callbacks=[early_stop, checkpoint],
+        callbacks=[early_stop, checkpoint, reduce_lr],
         verbose=1
     )
 
     test_loss, test_mae = model.evaluate(testX, testY, verbose=0)
-    test_pred = model.predict(testX, verbose=0).flatten()
+    probability = model.predict(testX).flatten()
+    test_pred = (probability >= 0.5).astype(int)    
     print("\n========== PREDICTION STATISTICS ==========")
     print(f"Actual mean      : {np.mean(testY):.6f}")
     print(f"Predicted mean   : {np.mean(test_pred):.6f}")
@@ -189,18 +262,13 @@ def main():
     # -------------------------------------------------------
     # Metrics
     # -------------------------------------------------------
-    dir_acc = directional_accuracy(testY, test_pred)
+    accuracy = np.mean(test_pred == testY)
     baseline_acc = naive_baseline_accuracy(testY)
+    print(f"Classification Accuracy : {accuracy*100:.2f}%")
+    
 
     print(f"Test MSE: {test_loss:.6f} | Test MAE (return): {test_mae:.6f}")
-    print(f"Directional accuracy on test set: {dir_acc*100:.2f}%")
     print(f"Naive persistence baseline directional accuracy: {baseline_acc*100:.2f}%")    
-    dir_acc = directional_accuracy(testY, test_pred)
-    baseline_acc = naive_baseline_accuracy(testY)
-
-    print(f"Test MSE: {test_loss:.6f} | Test MAE (return): {test_mae:.6f}")
-    print(f"Directional accuracy on test set: {dir_acc*100:.2f}%")
-    print(f"Naive persistence baseline directional accuracy: {baseline_acc*100:.2f}%")
     print("If the model's directional accuracy isn't clearly above both 50% "
           "and the naive baseline, treat any backtest P&L with suspicion --"
           "it likely isn't capturing real predictive signal yet.")

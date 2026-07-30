@@ -17,6 +17,6 @@
     "BB_Width",
     "ATR_14"
   ],
-  "window_size": 30,
+  "window_size": 64,
   "horizon": 1
 }

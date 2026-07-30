@@ -26,7 +26,8 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     windows), so no future information leaks into a given row.
     """
     df = df.copy()
-
+    # Option 2: Drop in place without reassigning
+    df.drop(columns=['session'], inplace=True)
     close = df['close']
     high = df['high']
     low = df['low']
@@ -101,9 +102,10 @@ def prepare_features_and_target(df: pd.DataFrame, horizon: int = 1):
 
 if __name__ == "__main__":
     # read data from CSV, add indicators, and save to new CSV for training
-    df = pd.read_csv(f"{DATA_DIR}/{stock_symbol}_{bar_size}_init.csv")
+    clean_bar_name = str(bar_size).replace(" ", "").lower()
+    df = pd.read_csv(f"{DATA_DIR}/{stock_symbol}_{clean_bar_name}.csv")
     df = add_technical_indicators(df)
     df, feature_columns, raw_close = prepare_features_and_target(df, horizon=1)
-    df.to_csv(f"{DATA_DIR}/{stock_symbol}_{bar_size}_features.csv", index=False)
-    
+    df.to_csv(f"{DATA_DIR}/{stock_symbol}_{clean_bar_name}_features.csv", index=False)
+
     

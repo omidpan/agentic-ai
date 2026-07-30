@@ -17,10 +17,10 @@ parser.add_argument("-bs", "--bar_size",
 args = parser.parse_args()
 stock_symbol = args.symbol.lower()
 bar_size = args.bar_size
-
+clean_bar_name = str(bar_size).replace(" ", "").lower()
 # 1. Load your dataset
-print(f"Loading data for {DATA_DIR}/{stock_symbol}_{bar_size}_init.csv")
-df = pd.read_csv(f"{DATA_DIR}/{stock_symbol}_{bar_size}_init.csv")
+print(f"Loading data for {DATA_DIR}/{stock_symbol}_{clean_bar_name}.csv")
+df = pd.read_csv(f"{DATA_DIR}/{stock_symbol}_{clean_bar_name}.csv")
 df["Date"] = pd.to_datetime(df["datetime"], unit='s')
 df.set_index("Date", inplace=True)
 
@@ -88,4 +88,4 @@ print("\n--- Detected Crossover Events ---")
 print(crossover_events[['close', 'MACD_20_30_10', 'MACDs_20_30_10', 'BBL_36_2.0', 'BBU_36_2.0']].tail(10))
 
 # 6. View your updated dataset with indicators
-print(df.head())
+print(df.head(100))
