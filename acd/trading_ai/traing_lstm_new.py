@@ -229,7 +229,7 @@ def main():
         verbose=1
     )
 
-    test_loss, test_mae = model.evaluate(testX, testY, verbose=0)
+    test_loss, test_acc, test_auc = model.evaluate(testX, testY, verbose=0)
     probability = model.predict(testX).flatten()
     test_pred = (probability >= 0.5).astype(int)    
     print("\n========== PREDICTION STATISTICS ==========")
@@ -267,7 +267,7 @@ def main():
     print(f"Classification Accuracy : {accuracy*100:.2f}%")
     
 
-    print(f"Test MSE: {test_loss:.6f} | Test MAE (return): {test_mae:.6f}")
+    print(f"Test Loss: {test_loss:.6f} | Test Accuracy: {test_acc*100:.2f}% | Test AUC: {test_auc:.4f}")
     print(f"Naive persistence baseline directional accuracy: {baseline_acc*100:.2f}%")    
     print("If the model's directional accuracy isn't clearly above both 50% "
           "and the naive baseline, treat any backtest P&L with suspicion --"
