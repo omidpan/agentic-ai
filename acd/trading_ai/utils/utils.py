@@ -8,8 +8,7 @@ import tensorflow as tf
 from tensorflow import keras
 import yfinance as yf
 
-from config import (
-    TICKER, PERIOD, INTERVAL, MODEL_PATH, SCALER_PATH,
+from config import (MODEL_PATH, SCALER_PATH,
     FEATURE_META_PATH, RANDOM_SEED, TRAIN_FRAC, VAL_FRAC
 )
 
@@ -20,7 +19,7 @@ def set_seeds(seed=RANDOM_SEED):
     tf.random.set_seed(seed)
 
 
-def download_raw_data(ticker=TICKER, period=PERIOD, interval=INTERVAL) -> pd.DataFrame:
+def download_raw_data(ticker, period, interval) -> pd.DataFrame:
     """Downloads raw market history from Yahoo Finance and formats indices."""
     df = yf.download(ticker, period=period, interval=interval, prepost=True)
     if isinstance(df.columns, pd.MultiIndex):

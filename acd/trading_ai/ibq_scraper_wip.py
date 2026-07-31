@@ -28,7 +28,7 @@ from ibapi.contract import Contract
 from ibapi.common import BarData
 
 from utils.appenv import APPENV
-from config import DATA_DIR,INTERVAL,PERIOD
+from config import DATA_DIR
 
 # 1. Initialize the parser
 parser = argparse.ArgumentParser(description="Process a stock symbol.")
@@ -90,8 +90,17 @@ class IBClient(EWrapper, EClient, APPENV):
 
         self.connected_event.set()
 
-
-
+    def nextId(self):
+        self.orderId +=1
+        return self.orderId
+    def disconnect_properly(self):
+        """Make sure we disconnect properly to release the clientId."""
+        self.disconnect()
+        print(f"Disconnected and clientId {self.clientId} is released.")
+    def wait_for_orderId(self):
+        """Block the thread until nextValidId has been called to initialize orderId."""
+        while self.orderId is None:
+            time.sleep(.4)  # Sleep for a short period and check again
     def error(self,reqId,errorCode,errorString,advancedOrderRejectJson=""):
 
         print(f"""
@@ -117,7 +126,7 @@ Message    : {errorString}
         api_thread = threading.Thread(target=self.run,daemon=True)
 
         api_thread.start()
-        if not self.connected_event.wait(timeout=15):
+        if not self.connected_event.wait(timeout=10):
             raise ConnectionError("IB API handshake failed")
         print("IB API ready")
 
@@ -134,13 +143,19 @@ Message    : {errorString}
         contract.symbol = symbol
 
         contract.secType = "STK"
-        if overnight:
+        if stock_symbol.lower()=='bit' or stock_symbol.lower()=='bitcoin':
+           contract.exchange='PAXOS'
+        elif overnight:
             contract.exchange = "OVERNIGHT"
         else:
             contract.exchange = "SMART"
-        
-
+            contract.primaryExchange = "NASDAQ"
         contract.currency = "USD"
+        if stock_symbol=='COMP':
+            contract.secType='IND'
+        if stock_symbol.lower()=='vix':
+            contract.exchange='SMART'
+            contract.primaryExchange='CBOE'
      
         return contract
 # --------------------------------------------------
@@ -190,130 +205,120 @@ Message    : {errorString}
     # --------------------------------------------------
     # Core multi-year historical collector
     # --------------------------------------------------
-    def get_historical_data(
-                self,
-                symbol,
-                duration=duration,
-                bar_size=bar_size,
-                what_to_show="TRADES",
-                useRTH=True
-        ):
+    def get_historical_data(self, symbol, duration=duration, bar_size=bar_size, what_to_show="TRADES"):
+        total_days_needed = self._parse_duration_to_days(duration)
+        days_remaining = total_days_needed
+        
+        all_dfs = []
+        end_date_anchor = "" 
+        
+        print(f"Total days requested: {total_days_needed}. Executing chunk sequence...")
+
+        while days_remaining > 0:
+            # Step down cleanly by maximum allowable chunk lengths to reduce unnecessary loops
+            chunk_days = min(days_remaining, 365)
+            chunk_duration_str = f"{chunk_days} D"
             
-            total_days_needed = self._parse_duration_to_days(duration)
-            days_remaining = total_days_needed
+            reqId = self.req_counter
+            self.req_counter += 1
+
+            self.historical_data[reqId] = []
+            self.earliest_date[reqId] = None
+
+            event = threading.Event()
+            self.request_events[reqId] = event
+
+            contract = self.stock_contract(symbol)
+            print(f"Sending request ID {reqId} for {chunk_duration_str} back from anchor: '{end_date_anchor}'...")
             
-            all_dfs = []
-            end_date_anchor = "" # Empty string starts at current moment
+            self.reqHistoricalData(
+                reqId=reqId,
+                contract=contract,
+                endDateTime=end_date_anchor,
+                durationStr=chunk_duration_str,
+                barSizeSetting=bar_size,
+                whatToShow=what_to_show,
+                # Controlled directly via commands: OVERNIGHT forces useRTH=False. SMART daytime uses True.
+                useRTH=int(False) if overnight else int(True),
+                formatDate=1, 
+                keepUpToDate=False,
+                chartOptions=[]
+            )
             
-            print(f"Total days requested: {total_days_needed}. Executing chunk sequence...")
-
-            while days_remaining > 0:
-                chunk_days = min(days_remaining, 365)
-                chunk_duration_str = f"{chunk_days} D"
-                
-                reqId = self.req_counter
-                self.req_counter += 1
-
-                self.historical_data[reqId] = []
-                self.earliest_date[reqId] = None
-
-                event = threading.Event()
-                self.request_events[reqId] = event
-
-                contract = self.stock_contract(symbol)
-                print(f"Sending historical request ID {reqId} for {chunk_duration_str} back from '{end_date_anchor}'...")
-                
-                self.reqHistoricalData(
-                    reqId=reqId,
-                    contract=contract,
-                    endDateTime=end_date_anchor,
-                    durationStr=chunk_duration_str,
-                    barSizeSetting=bar_size,
-                    whatToShow=what_to_show,
-                    useRTH=int(useRTH),
-                    formatDate=1, # 1 is yyyymmdd{space}{space}hh:mm:dd, 2 is unix timestamp
-                    keepUpToDate=False,
-                    chartOptions=[]
-                )
-                
-                # Wait for completion callback
-                if not event.wait(timeout=60):
-                    print(f"Historical data request {reqId} timed out. Stopping loop and processing what we have.")
-                    # Clean up memory references before breaking
-                    self._cleanup_request(reqId)
-                    break
-
-                # Safely convert this chunk's dictionary data to a DataFrame
-                chunk_df = pd.DataFrame(self.historical_data[reqId])
-                last_seen_date = self.earliest_date[reqId]
-
-                # Clean up memory references
+            if not event.wait(timeout=45):
+                print(f"Historical data request {reqId} timed out. Processing collected data.")
                 self._cleanup_request(reqId)
+                break
 
-                if chunk_df.empty:
-                    print(f"No data returned by IBKR for chunk ID {reqId}. Stopping loop.")
+            chunk_df = pd.DataFrame(self.historical_data[reqId])
+            last_seen_date = self.earliest_date[reqId]
+            self._cleanup_request(reqId)
+
+            if chunk_df.empty:
+                print(f"No more data returned by IBKR for chunk ID {reqId}. Terminating loop walkback.")
+                break
+
+            all_dfs.append(chunk_df)
+            days_remaining -= chunk_days
+
+            if days_remaining > 0:
+                if not last_seen_date:
                     break
+                
+                # --- CRITICAL FIX FOR DUPLICATION ---
+                # Daily bars are returned without timestamps (e.g. '20250212'). 
+                # This logic converts either date format into a standard IB API compatible timestamp string.
+                date_str = str(last_seen_date).strip()
+                if " " in date_str:
+                    clean_date = date_str.split()[0]
+                    clean_time = date_str.split()[1]
+                    end_date_anchor = f"{clean_date}-{clean_time}"
+                else:
+                    # Clean up standard formats like 'YYYYMMDD' or 'YYYY-MM-DD' cleanly into a midnight anchor
+                    clean_date = date_str.replace("-", "")
+                    end_date_anchor = f"{clean_date}-00:00:00"
 
-                all_dfs.append(chunk_df)
-                days_remaining -= chunk_days
+                time.sleep(1.5)
 
-                if days_remaining > 0:
-                    if not last_seen_date:
-                        print("Warning: Missing earliest date anchor. Cannot walk back further.")
-                        break
-                    
-                    # Normalize string date layout for next iteration anchor
-                    if " " in str(last_seen_date):
-                        clean_date = str(last_seen_date).split()[0]
-                        clean_time = str(last_seen_date).split()[1]
-                        end_date_anchor = f"{clean_date}-{clean_time}"
-                    else:
-                        end_date_anchor = f"{last_seen_date}-00:00:00"
+        if not all_dfs:
+            return pd.DataFrame(columns=["datetime", "open", "high", "low", "close", "volume"])
 
-                    # Crucial pacing delay for IB API rate limit control
-                    time.sleep(2.0)
-
-            # If ALL chunks failed or returned nothing, return an empty structured DataFrame
-            if not all_dfs:
-                print("Notice: No data was collected across any requested segments.")
-                return pd.DataFrame(columns=["datetime", "open", "high", "low", "close", "volume"])
-
-            # Merge all sequential chunks safely together
-            final_df = pd.concat(all_dfs, ignore_index=True)
+        final_df = pd.concat(all_dfs, ignore_index=True)
+        
+        if not final_df.empty:
+            final_df["datetime"] = pd.to_datetime(final_df["datetime"], errors='coerce')
+            final_df = final_df.dropna(subset=["datetime"])
             
-            # Normalize, clean, and sort output from oldest to newest
-            if not final_df.empty:
-                final_df["datetime"] = pd.to_datetime(final_df["datetime"], errors='coerce')
-                final_df = final_df.dropna(subset=["datetime"])
-                final_df = final_df.sort_values(by="datetime").reset_index(drop=True)
+            # --- CRITICAL BULLETPROOF DEDUPLICATION INSURANCE ---
+            final_df = final_df.drop_duplicates(subset=["datetime"], keep="first")
+            final_df = final_df.sort_values(by="datetime").reset_index(drop=True)
 
-            return final_df
-
+        return final_df
     def _cleanup_request(self, reqId):
-        """Helper method to prevent memory leaks if a request fails or finishes."""
-        if reqId in self.historical_data:
-            del self.historical_data[reqId]
-        if reqId in self.request_events:
-            del self.request_events[reqId]
-        if reqId in self.earliest_date:
-            del self.earliest_date[reqId]
+        if reqId in self.historical_data: del self.historical_data[reqId]
+        if reqId in self.request_events: del self.request_events[reqId]
+        if reqId in self.earliest_date: del self.earliest_date[reqId]
 
 try:
     app=IBClient()
     app.connect_ib()
 
     df = app.get_historical_data(symbol=stock_symbol, duration=duration,
-                                 bar_size=bar_size, 
-                                 useRTH=False)
-    print(df.head())
-    print(df.tail())
-    print(len(df))
+                                 bar_size=bar_size)
+    print("\n--- OUTPUT SNAPSHOT ---")
+    print(df.head(2))
+    print(df.tail(2))
+    print(f"Total entries loaded: {len(df)}")
+    
     clean_bar_name = str(bar_size).replace(" ", "").lower()
     if(len(df) > 0):
-        df.to_csv(f"{DATA_DIR}/{str(stock_symbol).lower()}_{bar_size}_{ 'overnight' if overnight else 'init' }.csv", index=False)
+        df.to_csv(f"{DATA_DIR}/{str(stock_symbol).lower()}_{clean_bar_name}_{ 'overnight' if overnight else 'init' }.csv", index=False)
     else:
         print("No data received. CSV file not created.")
 except Exception as e:
     print(f"An error occurred: {e}")
 finally:
-    app.disconnect()
+    try:
+        app.disconnect()
+    except:
+        pass

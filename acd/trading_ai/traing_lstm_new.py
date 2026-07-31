@@ -17,6 +17,7 @@ from tensorflow.keras import layers, callbacks
 from sklearn.preprocessing import MinMaxScaler
 import argparse
 import matplotlib.pyplot as plt
+from sklearn.utils.class_weight import compute_class_weight
 from config import DATA_DIR
 parser = argparse.ArgumentParser(description="Process a stock symbol.")
 parser.add_argument("-s" ,"--symbol",
@@ -33,7 +34,7 @@ args = parser.parse_args()
 stock_symbol = args.symbol.lower()
 bar_size = args.bar_size
 from config import (
-    TICKER, PERIOD, INTERVAL, WINDOW_SIZE, HORIZON,
+    WINDOW_SIZE, HORIZON,
     TRAIN_FRAC, VAL_FRAC, MODEL_PATH, SCALER_PATH, FEATURE_META_PATH, RANDOM_SEED,
     DATA_DIR,MODEL_PATH, SCALER_PATH, FEATURE_META_PATH, RANDOM_SEED,
 )
@@ -77,6 +78,18 @@ def naive_baseline_accuracy(y_true):
         return np.nan
 
     return float(np.mean(prev_sign[mask] == next_sign[mask]))
+def naive_baseline_accuracy_binary(y_true):
+    """
+        Computes persistence accuracy for binary targets (0 or 1).
+        Predicts yesterday's binary label for today.
+        """
+    y_true = np.asarray(y_true)
+        
+    prev_day = y_true[:-1]
+    today = y_true[1:]
+    
+    # Simple percentage of times today matches yesterday
+    return float(np.mean(prev_day == today))
 def chronological_split(df: pd.DataFrame, train_frac=TRAIN_FRAC, val_frac=VAL_FRAC):
     """
     Splits a time-ordered dataframe into train/val/test by position, never
@@ -142,13 +155,13 @@ def prepare_features_and_target(df: pd.DataFrame, horizon: int = 1):
 def main():
     os.makedirs(os.path.dirname(MODEL_PATH) or '.', exist_ok=True)
     clean_bar_name = str(bar_size).replace(" ", "").lower()
-    print(f"loading data {TICKER}...")
+    print(f"loading data {stock_symbol}...")
     df = pd.read_csv(f"{DATA_DIR}/{stock_symbol}_{clean_bar_name}_features.csv")
     df_full, feature_columns, _ = prepare_features_and_target(df, horizon=HORIZON)
+    correlations = df_full[feature_columns].corrwith(df_full['Target_Return']).abs().sort_values(ascending=False)
+    print("all 16 correlated features:")
+    print(correlations.head(16))
 
-# --------------------------------------------------------
-# ADD THIS HERE
-# --------------------------------------------------------
     print("\n========== TARGET RETURN STATISTICS ==========")
     print(df_full["Target_Return"].describe())
 
@@ -189,25 +202,36 @@ def main():
     testX, testY = create_sequences(pd.DataFrame(test_X_scaled), pd.Series(test_Y), WINDOW_SIZE)
 
     print(f"Train seq: {trainX.shape}, Val seq: {valX.shape}, Test seq: {testX.shape}")
-
     model = keras.Sequential([
-        layers.LSTM(units=64, activation='tanh', return_sequences=True,
-                    input_shape=(trainX.shape[1], trainX.shape[2])),
-        layers.Dropout(rate=0.05),
-        layers.LSTM(units=32, activation='tanh'),
-        layers.Dropout(rate=0.05),
-        layers.Dense(16, activation='relu'),
+        layers.Input(shape=(trainX.shape[1], trainX.shape[2])),
+        layers.LSTM(units=16, activation='tanh'),  # Single LSTM layer first
+        layers.BatchNormalization(),                # Keeps gradients stable
+        layers.Dense(8, activation='relu'),
         layers.Dense(1, activation='sigmoid')
     ])
-
     model.compile(
-        optimizer='adam',
-        loss='binary_crossentropy',
-        metrics=[
-            'accuracy',
-            keras.metrics.AUC(name='auc')
-        ]
-    )
+    optimizer=keras.optimizers.Adam(learning_rate=0.001),
+    loss='binary_crossentropy',
+    metrics=['accuracy', keras.metrics.AUC(name='auc')]
+)
+    # model = keras.Sequential([
+    #     layers.Input(shape=(trainX.shape[1], trainX.shape[2])),
+    #     layers.LSTM(units=16, activation='tanh', return_sequences=True),
+    #     layers.Dropout(rate=0.05),
+    #     layers.LSTM(units=16, activation='tanh'),
+    #     layers.Dropout(rate=0.05),
+    #     layers.Dense(16, activation='relu'),
+    #     layers.Dense(1, activation='sigmoid')
+    # ])
+
+    # model.compile(
+    #     optimizer='adam',
+    #     loss='binary_crossentropy',
+    #     metrics=[
+    #         'accuracy',
+    #         keras.metrics.AUC(name='auc')
+    #     ]
+    # )
     model.summary()
 
     early_stop = callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True)
@@ -216,15 +240,23 @@ def main():
         monitor="val_loss",
         factor=0.5,
         patience=3,
-        min_lr=1e-6,
+        min_lr=1e-4,
         verbose=1
 )
+    # Calculate weights based on your training labels
+    class_weights = compute_class_weight(
+        class_weight='balanced',
+        classes=np.unique(trainY),
+        y=trainY
+    )
+    class_weight_dict = dict(enumerate(class_weights))
     model.fit(
         trainX, trainY,
         validation_data=(valX, valY),
         shuffle=False,
         epochs=100,
         batch_size=32,
+        class_weight=class_weight_dict,
         callbacks=[early_stop, checkpoint, reduce_lr],
         verbose=1
     )
@@ -245,16 +277,17 @@ def main():
     corr = np.corrcoef(testY, test_pred)[0, 1]
     print(f"Correlation      : {corr:.4f}")
     print("==========================================\n")
-# -------------------------------------------------------
-# Plot predictions vs actual returns
-# -------------------------------------------------------
+    # -------------------------------------------------------
+    # Plot predictions vs actual returns
+    # -------------------------------------------------------
 
     plt.figure(figsize=(15,5))
-    plt.plot(testY[:300], label="Actual Return")
-    plt.plot(test_pred[:300], label="Predicted Return")
-    plt.title("Actual vs Predicted Returns (First 300 Test Samples)")
+    plt.plot(testY[:300], label="Actual Class (0 or 1)", alpha=0.6)
+    plt.plot(probability[:300], label="Predicted Probability", color='orange')
+    plt.axhline(0.5, color='red', linestyle='--', label='0.5 Decision Boundary')
+    plt.title("Actual Target vs Model Output Probabilities")
     plt.xlabel("Test Sample")
-    plt.ylabel("Return")
+    plt.ylabel("Probability / Target")
     plt.grid(True)
     plt.legend()
     plt.show()
@@ -263,7 +296,7 @@ def main():
     # Metrics
     # -------------------------------------------------------
     accuracy = np.mean(test_pred == testY)
-    baseline_acc = naive_baseline_accuracy(testY)
+    baseline_acc = naive_baseline_accuracy_binary(testY)
     print(f"Classification Accuracy : {accuracy*100:.2f}%")
     
 
