@@ -8,3 +8,5 @@ __pycache__
 *.csv
 *.pkl
 *.keras
+*.parts
+*checkpoint.json
