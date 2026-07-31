@@ -1,0 +1,27 @@
+# Number of symbols downloaded concurrently. Keep this conservative for IB pacing.
+max_workers: 3
+
+# Relative paths are resolved beneath BASE_DIR.
+output_root: data
+
+defaults:
+  duration: "1 D"
+  bar_size: "1 mins"
+  sessions:
+    # - rth
+    - extended
+    # - overnight
+  what_to_show: TRADES
+  currency: USD
+
+groups:
+  quantum: 
+    symbols:
+       - IONQ
+       - RGTI    
+  # context:
+  #   symbols:
+  #     - symbol: QTUM
+  #       duration: "2 M"
+      # - symbol: SPY
+      #   duration: "5 Y"

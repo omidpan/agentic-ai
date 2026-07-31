@@ -1,0 +1,35 @@
+# Number of symbols downloaded concurrently. Keep this conservative for IB pacing.
+max_workers: 5
+
+# Relative paths are resolved beneath BASE_DIR.
+output_root: data
+defaults:
+  duration: "5 Y"
+  bar_size: " 4 hours"
+  sessions:
+    # - rth
+    - extended
+    # - overnight
+  what_to_show: TRADES
+  currency: USD
+groups:
+  semiconductor:
+    symbols:
+      - NVDA
+      - AMD
+      - AVGO
+      - TSM
+      - MRVL
+      - AMAT
+      - INTC      
+      # - MU
+
+      # # A symbol may override any default:
+      # - symbol: INTC
+      #   primary_exchange: NASDAQ   
+  context:
+    symbols:
+      - symbol: SMH
+        duration: "5 Y"
+      - symbol: SPY
+        duration: "5 Y"
