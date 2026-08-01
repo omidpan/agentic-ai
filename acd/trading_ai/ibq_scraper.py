@@ -1,13 +1,8 @@
 """Download IBKR historical bars for one symbol or a YAML-configured batch.
-
 Single-symbol compatibility:
-    python ibq_scraper_wip.py -s NVDA -bs "1 day" -d "5 Y" -o false
-
+    python ibq_scraper.py -s NVDA -bs "1 day" -d "5 Y" -o false
 Batch mode:
-    python ibq_scraper_wip.py --config scraper_config.yml
-
-Dependencies:
-    pip install ibapi pandas pyyaml
+    python ibq_scraper.py --config scraper-config-<groupName>.yml
 """
 
 from __future__ import annotations
