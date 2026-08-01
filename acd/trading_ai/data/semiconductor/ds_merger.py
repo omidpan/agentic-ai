@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import pandas as pd
-
-
+import numpy as np
+WINDOW_SIZE=15
+HORIZON=1
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -40,13 +41,20 @@ REQUIRED_COLUMNS = {
 }
 
 
+def safe_divide(
+        numerator: pd.Series,
+        denominator: pd.Series
+    ) -> pd.Series:
+        denominator = denominator.replace(0, np.nan)
+        return numerator.div(denominator)
 # --------------------------------------------------
-# Feature engineering
+# Feature engineering range_PTC
 # --------------------------------------------------
-
-def add_features(
+# 1 range_pct = (high - low) / close
+def add_features_range_pct(
     df: pd.DataFrame,
     feature_prefix: str,
+    context_type: str | None = None
 ) -> pd.DataFrame:
     """Add calculated features using a predictable column prefix."""
 
@@ -56,6 +64,282 @@ def add_features(
         (df["high"] - df["low"]) / df["close"]
     )
 
+    return df
+
+def add_trend_feature(df: pd.DataFrame, feature_prefix: str) -> pd.DataFrame:
+    df = df.copy()
+    close = df["close"].astype(float)
+
+    ema20 = close.ewm(span=20,adjust=False).mean()
+    ema50 = close.ewm(span=50,adjust=False).mean()
+    df[f"{feature_prefix}_EMA_Ratio"] = safe_divide(ema20,ema50) - 1
+    return df
+def add_candle_features(
+    df: pd.DataFrame,
+    feature_prefix: str
+) -> pd.DataFrame:
+
+    df = df.copy()
+
+    body = df["close"] - df["open"]
+    candle_range = df["high"] - df["low"]
+
+    upper_shadow = (
+        df["high"]
+        - df[["open", "close"]].max(axis=1)
+    )
+
+    lower_shadow = (
+        df[["open", "close"]].min(axis=1)
+        - df["low"]
+    )
+
+    df[f"{feature_prefix}_BodyPct"] = safe_divide(
+        body,
+        df["open"]
+    )
+
+    df[f"{feature_prefix}_RangePct"] = safe_divide(
+        candle_range,
+        df["close"]
+    )
+
+    df[f"{feature_prefix}_ShadowImbalance"] = safe_divide(
+        lower_shadow - upper_shadow,
+        candle_range
+    )
+    return df
+def add_gap_features(
+    df: pd.DataFrame,
+    feature_prefix: str
+) -> pd.DataFrame:
+
+    df = df.copy()
+
+    df[f"{feature_prefix}_GapPct"] = safe_divide(
+        df["open"] - df["close"].shift(1),
+        df["close"].shift(1)
+    )
+    df[f"{feature_prefix}_GapPct_Missing"] = df[f"{feature_prefix}_GapPct"].isna().astype(int)
+    df[f"{feature_prefix}_GapPct"] = df[f"{feature_prefix}_GapPct"].fillna(0.0)
+
+    return df
+def add_rolling_feature(
+    df: pd.DataFrame,
+    window: int = WINDOW_SIZE,
+    feature_prefix: str = "stock"
+) -> pd.DataFrame:
+    """
+    Add rolling volatility using current and previous log returns.
+
+    Keeps all rows:
+    - Uses partial history when fewer than `window` returns exist.
+    - Records how much history was available.
+    - Replaces unavoidable initial NaN with a neutral value.
+    """
+
+    df = df.copy()
+
+    log_return_column = f"{feature_prefix}_LogReturn"
+    rolling_std_column = (
+        f"{feature_prefix}_RollingStd{window}"
+    )
+    history_count_column = (
+        f"{feature_prefix}_HistoryCount{window}"
+    )
+    full_history_column = (
+        f"{feature_prefix}_FullHistory{window}"
+    )
+    missing_column = (
+        f"{rolling_std_column}_Missing"
+    )
+
+    returns = df[log_return_column]
+
+    # Number of valid returns currently available
+    df[history_count_column] = (
+        returns
+        .rolling(
+            window=window,
+            min_periods=1
+        )
+        .count()
+    )
+
+    # 1 when the complete rolling window is available
+    df[full_history_column] = (
+        df[history_count_column] >= window
+    ).astype(int)
+
+    # Standard deviation requires at least two valid returns
+    df[rolling_std_column] = (
+        returns
+        .rolling(
+            window=window,
+            min_periods=2
+        )
+        .std()
+    )
+
+    # Preserve information about unavailable volatility
+    df[missing_column] = (
+        df[rolling_std_column]
+        .isna()
+        .astype(int)
+    )
+
+    # Neutral replacement for unavoidable initial NaN values
+    df[rolling_std_column] = (
+        df[rolling_std_column]
+        .fillna(0.0)
+    )
+
+    return df
+def add_zscore_feature(
+    df: pd.DataFrame,
+    window: int = WINDOW_SIZE,
+    feature_prefix: str = "stock"
+) -> pd.DataFrame:
+    """
+    Add the rolling z-score of the current log return.
+
+    Uses only the current and previous observations.
+    Preserves all rows without using future information.
+    """
+
+    df = df.copy()
+
+    return_column = f"{feature_prefix}_LogReturn"
+    zscore_column = f"{feature_prefix}_ReturnZ{window}"
+    missing_column = f"{zscore_column}_Missing"
+
+    returns = df[return_column]
+
+    # Partial windows preserve the early rows.
+    # At least two valid returns are needed for standard deviation.
+    rolling_mean = returns.rolling(
+        window=window,
+        min_periods=2
+    ).mean()
+
+    rolling_std = returns.rolling(
+        window=window,
+        min_periods=2
+    ).std()
+
+    # Treat zero or extremely small standard deviation as unavailable.
+    valid_std = rolling_std.mask(
+        rolling_std.abs() < 1e-12
+    )
+
+    df[zscore_column] = safe_divide(
+        returns - rolling_mean,
+        valid_std
+    )
+def add_zscore_feature(
+    df: pd.DataFrame,
+    window: int = WINDOW_SIZE,
+    feature_prefix: str = "stock"
+) -> pd.DataFrame:
+    """
+    Add the rolling z-score of the current log return.
+
+    Uses only the current and previous observations.
+    Preserves all rows without using future information.
+    """
+
+    df = df.copy()
+
+    return_column = f"{feature_prefix}_LogReturn"
+    zscore_column = f"{feature_prefix}_ReturnZ{window}"
+    missing_column = f"{zscore_column}_Missing"
+
+    returns = df[return_column]
+
+    # Partial windows preserve the early rows.
+    # At least two valid returns are needed for standard deviation.
+    rolling_mean = returns.rolling(
+        window=window,
+        min_periods=2
+    ).mean()
+
+    rolling_std = returns.rolling(
+        window=window,
+        min_periods=2
+    ).std()
+
+    # Treat zero or extremely small standard deviation as unavailable.
+    valid_std = rolling_std.mask(
+        rolling_std.abs() < 1e-12
+    )
+
+    df[zscore_column] = safe_divide(
+        returns - rolling_mean,
+        valid_std
+    )
+      # Record which values were originally unavailable.
+    df[missing_column] = (
+        df[zscore_column]
+        .isna()
+        .astype(int)
+    )
+
+    # A z-score of zero is the neutral replacement.
+    df[zscore_column] = (
+        df[zscore_column]
+        .fillna(0.0)
+    )  
+    return df  
+def add_features(df: pd.DataFrame, feature_prefix: str) -> pd.DataFrame:
+
+    df=add_features_range_pct(df, feature_prefix)
+    df=create_target(df, horizon=HORIZON, feature_prefix=feature_prefix)
+    df=add_trend_feature(df,feature_prefix=feature_prefix)
+    df=add_candle_features(df,feature_prefix=feature_prefix)
+    df=add_gap_features(df,feature_prefix=feature_prefix)
+    df=add_rolling_feature(df, window=WINDOW_SIZE,feature_prefix=feature_prefix)
+    # df=add_zscore_feature(df, window=WINDOW_SIZE,feature_prefix=feature_prefix)
+
+    return df
+
+
+
+########## complete feature engineering and return targets+++++++++++++++
+# 2 return targets
+# ----------------------------------------------------------
+# Target Generation
+# ----------------------------------------------------------
+
+def create_target(
+    df: pd.DataFrame,
+    horizon: int = HORIZON,
+    feature_prefix: str | None = 'stock',
+) -> pd.DataFrame:
+    """
+    Creates prediction targets.
+
+    horizon=1
+
+        Predict next candle.
+
+    horizon=2
+
+        Predict two candles ahead.
+    """
+
+    df = df.copy()
+
+    # Future percentage return
+
+    df[f"{feature_prefix}_Return"] = (df["close"].shift(-horizon)/df["close"]- 1.0)
+
+    # Future log return
+
+    df[f"{feature_prefix}_LogReturn"] = np.log(df["close"].shift(-horizon)/df["close"])
+
+    # Binary direction
+
+    df[f"{feature_prefix}_Direction"] = (df[f"{feature_prefix}_Return"] > 0).astype(int)
     return df
 
 
@@ -122,8 +406,7 @@ def load_dataset(
     )
 
     prefix = feature_prefix or instrument_name
-    df = add_features(df, prefix)
-
+    df = add_features(df, feature_prefix=prefix)
     return instrument_name, df
 
 
@@ -154,10 +437,8 @@ for group, ticker_names in dataset_names.items():
 if not stock_datasets:
     raise ValueError("No stock datasets were loaded.")
 
-stocks = pd.concat(
-    stock_datasets.values(),
-    ignore_index=True,
-)
+stocks = pd.concat(stock_datasets.values(),ignore_index=True,)
+# Final chronological order for training and splitting
 
 
 # --------------------------------------------------
@@ -255,7 +536,7 @@ for context_name, context_df in context_datasets.items():
 combined = (
     combined
     .sort_values(
-        ["ticker", "datetime"],
+        ["datetime", "ticker"],
         ascending=[True, True],
     )
     .reset_index(drop=True)
@@ -300,10 +581,20 @@ if missing_context_mask.any():
 # --------------------------------------------------
 
 print("Combined columns:")
-print(combined.columns.tolist())
+# Convert empty or whitespace-only strings to NaN
+df = df.replace(r"^\s*$", np.nan, regex=True)
 
-print("First two combined rows:")
-print(combined.head(2).to_string(index=False))
+# Check whether the DataFrame contains any missing value
+has_missing = df.isna().any().any()
+
+print("Has missing or empty values:", has_missing)
+rows_with_missing = df[df.isna().any(axis=1)]
+print(rows_with_missing)
+print(len(combined.columns))
+# print(combined.columns.tolist())
+
+# print("First two combined rows:")
+# # print(combined.head(2).to_string(index=False))
 
 output_path = BASE_DIR / "combined_dataset.csv"
 combined.to_csv(output_path, index=False)

@@ -871,7 +871,6 @@ def get_feature_columns(
     ignore = {
 
         "datetime",
-        # "session",
 
         "Target_Return",
 

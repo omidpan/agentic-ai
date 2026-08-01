@@ -8,7 +8,7 @@ RAW_DATA_TOPIC = "ionq_raw_candles"
 PREDICTION_TOPIC = "ionq_predictions"
 
 # Ticker & Modeling Settings
-WINDOW_SIZE = 20 # 3 trading weeks
+WINDOW_SIZE = 40 # 3 trading weeks
 RANDOM_SEED = 2505
 HORIZON = 1 # predict return this many candles ahead
 TRAIN_FRAC = 0.70

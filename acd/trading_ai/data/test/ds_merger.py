@@ -299,6 +299,8 @@ if missing_context.any():
         "Some stock dates have no matching context data:\n"
         f"{problem_rows}"
     )
-print(combined.columns)
+    
+    
+print(len(combined.columns))
 print(combined.head())
-combined.to_csv(BASE_DIR / "combined_dataset.csv", index=False)
+pd.to_csv(combined, BASE_DIR / "combined_dataset.csv", index=False)
