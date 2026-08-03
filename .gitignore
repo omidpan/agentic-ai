@@ -9,8 +9,6 @@ __pycache__
 *.pkl
 *.keras
 *.parts
+*.db
 *checkpoint.json
-acd/trading_ai/data/semiconductor/heatmap-stock-daily.png
-acd/trading_ai/docker/mlruns/mlflow.db
-acd/trading_ai/docker/mlflow_stock.py
-.gitignore
+*.png

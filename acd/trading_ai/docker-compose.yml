@@ -1,7 +1,5 @@
-version: '3.8'
-
 services:
-  # =========================================================================
+# =========================================================================
   # 1. DATA STREAMING LAYER (Zookeeperless Kafka / KRaft Mode)
   # =========================================================================
   kafka:
@@ -38,39 +36,78 @@ services:
   # =========================================================================
   # 2. EXPERIMENT TRACKING LAYER (MLflow Setup)
   # =========================================================================
+  
   mlflow-server:
     image: ghcr.io/mlflow/mlflow:v2.14.1
     container_name: mlflow
     restart: unless-stopped
+
     ports:
-      - "5001:5001"
+      - "${MLFLOW_HOST_PORT}:${MLFLOW_INTERNAL_PORT}"
+
     volumes:
-      # Persists parameters, runs, and the SQLite database file on your Mac
-      - ./models:/models
-      # Persists binary models (.keras, .pkl) on your Mac
-      - ./models/artifacts:/mlflow/mlartifacts
-    command: >
-      mlflow server 
-      --backend-store-uri sqlite:////models/mlflow.db
-      --serve-artifacts
-      --artifacts-destination /models/artifacts
-      --host 0.0.0.0
-      --port 5001
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      - "${MODELS_HOST_PATH}:${MODELS_CONTAINER_PATH}"
+
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri
+      - "sqlite:///${MLFLOW_DATABASE_PATH}"
+      - --serve-artifacts
+      - --artifacts-destination
+      - "${MLFLOW_ARTIFACTS_PATH}"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${MLFLOW_INTERNAL_PORT}"
+
     networks:
-      - trading_pipeline_network
+      - mlflow-network
+
+
+  mlflow-api-srv:
+    build:
+      context: ./mlflow-tracker
+      dockerfile: Dockerfile
+
+    container_name: mlflow-api-srv
+    restart: unless-stopped
+
+    ports:
+      - "${TRACKER_HOST_PORT}:${TRACKER_INTERNAL_PORT}"
+
+    environment:
+      MLFLOW_TRACKING_URI: "http://mlflow-server:${MLFLOW_INTERNAL_PORT}"
+      MODELS_DIRECTORY: "${MODELS_CONTAINER_PATH}"
+      MODEL_SUBDIRECTORY: "${MODEL_SUBDIRECTORY}"
+      GIT_PYTHON_REFRESH: quiet
+
+    volumes:
+      - "${MODELS_HOST_PATH}:${MODELS_CONTAINER_PATH}"
+
+    depends_on:
+      - mlflow-server
+
+    command:
+      - uvicorn
+      - mlflow_stock_tracker:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${TRACKER_INTERNAL_PORT}"
+
+    networks:
+      - mlflow-network
 
 # =========================================================================
 # NETWORKS & VOLUMES INTERFACES
 # =========================================================================
 volumes:
   kafka_data:
-
 networks:
+  mlflow-network:
+    name: mlflow-network
+    driver: bridge
   trading_pipeline_network:
     name: trading_pipeline_network
     driver: bridge

@@ -15,9 +15,9 @@ TRAIN_FRAC = 0.70
 VAL_FRAC = 0.15
 # remaining fraction (0.15) is TEST
 # File Paths
-MODEL_PATH = BASE_DIR / 'models' / 'lstm_model'
-SCALER_PATH = BASE_DIR / 'models' / 'scaler'
-FEATURE_META_PATH = BASE_DIR / 'models' / 'feature_meta'
+MODEL_PATH = BASE_DIR / 'docker' /'models' / 'model' / 'lstm_model'
+SCALER_PATH = BASE_DIR / 'docker' /'models' / 'model' / 'scaler'
+FEATURE_META_PATH = BASE_DIR / 'docker' /'models' / 'feature_meta'
 DATA_DIR = BASE_DIR / 'data'
 # Strategy Parameters
 CONFIDENCE_THRESHOLD = 0.005      # 0.5% minimum expected return to trigger trade

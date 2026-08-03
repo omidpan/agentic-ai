@@ -12,21 +12,30 @@ from feature_engineering import add_technical_indicators
 import argparse
 from config import DATA_DIR
 parser = argparse.ArgumentParser(description="Process a stock symbol.")
-parser.add_argument("-s" ,"--symbol",
-                    type=str,
-                    required=True,
-                    help="The stock symbol to process. default is NVDA.", 
-                    nargs='?', default="NVDA")
 parser.add_argument("-bs", "--bar_size",
                     type=str,
                     required=True,
                     help="candle size of historical data. default is 1 hour.", 
                     nargs='?', default="1 hour")
+parser.add_argument(
+    "-t ","--task",
+    choices=["classification", "regression", "multi_regression"],
+    default="classification",
+    help="Model type to train (default: regression).",
+)
+parser.add_argument(
+    "-s ","--sector",
+    choices=["quantum", "semiconductor"],
+    default="semiconductor",
+    help="Model type to train (default: regression).",
+)
 args = parser.parse_args()
 
 # Access the value using dot notation
 stock_symbol = args.symbol.lower()
 bar_size = args.bar_size
+task=args.task
+sector=args.sector
 KAFKA_SERVER = 'localhost:9092'
 RAW_DATA_TOPIC = 'ionq_raw_candles'
 PREDICTION_TOPIC = 'ionq_predictions'
@@ -35,16 +44,16 @@ PREDICTION_TOPIC = 'ionq_predictions'
 # Keep extra buffer above WINDOW_SIZE so recomputed indicators are valid for
 # every row inside the model's input window -- otherwise the first several
 # rows of the window would carry NaN-derived indicators that training never saw.
-INDICATOR_LOOKBACK = 40
+INDICATOR_LOOKBACK = 0
 
-def fetch_initial_buffer(buffer_size):
-    print("Fetching initial init candle buffer...")
-    df = pd.read_csv(f"{DATA_DIR}/{stock_symbol}_{bar_size}_init.csv")
+def fetch_initial_buffer(sector:str,buffer_size):
+    print(f"Fetching initial tail data from {sector} sector candle buffer...")
+    df = pd.read_csv(f"{DATA_DIR}/{sector}/dataset_{bar_size}.csv")
     return df.tail(buffer_size)
 
 
 def main():
-    model, scaler, meta = load_model_and_scaler()
+    model, scaler, meta = load_model_and_scaler(task=task,bar_size=bar_size)
     feature_columns = meta['feature_columns']
     window_size = meta['window_size']
     buffer_size = window_size + INDICATOR_LOOKBACK
@@ -62,8 +71,8 @@ def main():
         value_deserializer=lambda x: json.loads(x.decode('utf-8'))
     )
 
-    raw_buffer = fetch_initial_buffer(buffer_size)
-    print("Real-time prediction engine started. Listening for completed candles...")
+    raw_buffer = fetch_initial_buffer(sector,buffer_size)
+    print(f"Real-time prediction engine started for {sector} with buffer_size:{buffer_size} Listening for completed candles...")
 
     for message in consumer:
         print(f"Received candle: {message.value}")
@@ -81,7 +90,7 @@ def main():
 
         # Recompute indicators the SAME way training does, so live features
         # never silently diverge from what the model was trained on.
-        feat_df = add_technical_indicators(raw_buffer)
+        feat_df = add_feature(raw_buffer)
         if len(feat_df) < window_size:
             print("Not enough rows after adding indicators. Waiting for more data...")
             continue

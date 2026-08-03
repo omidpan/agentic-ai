@@ -58,12 +58,12 @@ def create_sequences(feature_df: pd.DataFrame, target_series: pd.Series, window_
     return np.array(X), np.array(Y)
 
 
-def load_model_and_scaler():
+def load_model_and_scaler(task:str,bar_size:str):
     """Loads the trained Keras model, scaler, and feature metadata from disk."""
     if not os.path.exists(MODEL_PATH) or not os.path.exists(SCALER_PATH):
         raise FileNotFoundError("Model or scaler files are missing. Please run train_lstm.py first.")
-    model = keras.models.load_model(MODEL_PATH)
-    scaler = joblib.load(SCALER_PATH)
+    model = keras.models.load_model(f'{MODEL_PATH}-{task}-{bar_size}.keras')
+    scaler = joblib.load(f'{SCALER_PATH}-{task}-{bar_size}.pkl')
     with open(FEATURE_META_PATH) as f:
         meta = json.load(f)
     return model, scaler, meta
