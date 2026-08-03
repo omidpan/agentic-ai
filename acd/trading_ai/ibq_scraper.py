@@ -636,7 +636,7 @@ def run_batch(app: IBClient, jobs: list[DownloadJob], workers: int, output_root:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download historical data from a local IB Gateway.")
-    parser.add_argument("--config", type=Path, help="YAML batch configuration file",default=BASE_DIR / "config" / "scraper-config-quantum.yml")
+    parser.add_argument("--config", type=Path, help="YAML batch configuration file",default=BASE_DIR / "config" / "scraper-config-semicond.yml")
     parser.add_argument("-s", "--symbol", help="Single symbol (keeps the original CLI mode)")
     parser.add_argument("-o", "--overnight", type=parse_bool, default=False)
     parser.add_argument("-d", "--duration", default="365 D")

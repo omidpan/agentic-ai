@@ -9,7 +9,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils.class_weight import compute_class_weight
 from tensorflow import keras
-from tensorflow.keras import callbacks, layers, Model
+from tensorflow.keras import callbacks, layers, Model   
 import tensorflow as tf
 
 from config import (
@@ -201,29 +201,32 @@ def prepare_data(df: pd.DataFrame):
 
 
     # 4. Strictly exclude 'datetime' and targets from the feature set
-    ignore = {
-        "datetime",
-        "ticker",
-        "stock_Return",
-        "stock_LogReturn",
-        "stock_Direction",
-        "smh_Return",
-        "smh_LogReturn",
-        "smh_Direction",
-        "spy_Return",
-        "spy_LogReturn",
-        "spy_Direction",
-    }
+    ignore = [
+    column
+    for column in df.columns if column.endswith((
+        "_open",
+        "_high",
+        "_low",
+        "_close",
+        # "_volume",
+        "_Direction",
+        "_Return",
+        "_LogReturn",
+        "ock_Count15",    
+        "mh_Count15"    
+    ))]
+    ignore.append("datetime")  # Ensure datetime is excluded
+    ignore.append("ticker")  # Ensure ticker is excluded
+    ignore.append("ticker_id")  # Ensure ticker_id is excluded
 
     feature_columns = [c for c in df.columns if c not in ignore and pd.api.types.is_numeric_dtype(df[c])]
 
     print(f"+++ Feature length: {len(feature_columns)} +++")
     # Quick check to ensure datetime is excluded!
-    print(f"Sample features (first 5): {feature_columns[:5]}")  
+    print(f"Sample features (first 5): {feature_columns}")  
     
     return df, feature_columns
-from tensorflow import keras
-from tensorflow.keras import layers
+
 
 
 def build_classification_model(

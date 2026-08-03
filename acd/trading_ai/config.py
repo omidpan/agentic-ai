@@ -8,15 +8,15 @@ RAW_DATA_TOPIC = "ionq_raw_candles"
 PREDICTION_TOPIC = "ionq_predictions"
 
 # Ticker & Modeling Settings
-WINDOW_SIZE = 40 # 3 trading weeks
+WINDOW_SIZE = 15 # 3 trading weeks
 RANDOM_SEED = 2505
 HORIZON = 1 # predict return this many candles ahead
 TRAIN_FRAC = 0.70
 VAL_FRAC = 0.15
 # remaining fraction (0.15) is TEST
 # File Paths
-MODEL_PATH = BASE_DIR / 'models' / 'lstm_model.keras'
-SCALER_PATH = BASE_DIR / 'models' / 'scaler.pkl'
+MODEL_PATH = BASE_DIR / 'models' / 'lstm_model'
+SCALER_PATH = BASE_DIR / 'models' / 'scaler'
 FEATURE_META_PATH = BASE_DIR / 'models' / 'feature_meta.json'
 DATA_DIR = BASE_DIR / 'data'
 # Strategy Parameters

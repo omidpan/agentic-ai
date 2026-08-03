@@ -1,5 +1,6 @@
 # How to Enable and Start TWS API and IB Gateway
-
+## important to start the project. The best idea is to have 
+a unique virtual env for all the learning process
 ## Step 1: Configure IB Gateway Settings
 
 After installing **IB Gateway**, verify that the date, time, and connection settings are correctly configured.

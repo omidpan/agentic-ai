@@ -10,3 +10,4 @@ __pycache__
 *.keras
 *.parts
 *checkpoint.json
+acd/trading_ai/data/semiconductor/heatmap-stock-daily.png
