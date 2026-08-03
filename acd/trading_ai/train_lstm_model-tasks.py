@@ -1,7 +1,10 @@
 import argparse
 import json
 import os
-
+### mlflow dependencies
+import requests
+from dotenv import load_dotenv
+############
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,7 +16,15 @@ from tensorflow.keras import callbacks, layers, Model
 import tensorflow as tf
 from utils.utils import set_seeds
 
-## configs
+############# configs
+
+PROJECT_DIRECTORY = os.path.dirname(
+    os.path.abspath(__file__)
+)
+
+load_dotenv(
+    os.path.join(PROJECT_DIRECTORY, ".env")
+)
 from config import (
     DATA_DIR,
     FEATURE_META_PATH,
@@ -37,7 +48,7 @@ parser.add_argument(
 )
 # REGRESSION CHANGE 1: choose the experiment without editing the source code.
 parser.add_argument(
-    "--task",
+    "-t","--task",
     choices=["classification", "regression", "multi_regression"],
     default="regression",
     help="Model type to train (default: regression).",
@@ -55,13 +66,46 @@ parser.add_argument(
     default=str(HORIZON),
     help="Comma-separated future return horizons, for example 1,5,20.",
 )
+parser.add_argument(
+    "-expr","--experiment-name",
+    default=None,
+    help=(
+        "Optional MLflow experiment name. "
+        "If omitted, a name is generated automatically."
+    ),
+)
 args = parser.parse_args()
+
 stock_symbol = args.symbol.lower()
-bar_size = args.bar_size
 task = args.task
-__MODEL_PATH=f"{MODEL_PATH}-{task}-{bar_size}.keras"
-__SCALER_PATH=f"{SCALER_PATH}-{task}-{bar_size}.pkl"
-__FEATURE_META_PATH=f"{FEATURE_META_PATH}-{task}-{bar_size}.json"
+
+# Examples:
+# "1 hour" -> "1hour"
+# "1 DAY"  -> "1day"
+bar_size = (
+    str(args.bar_size)
+    .strip()
+    .replace(" ", "")
+    .lower()
+)
+
+experiment_name = (
+    args.experiment_name
+    or f"train_lstm-{task}-{bar_size}"
+)
+
+__MODEL_PATH = (
+    f"{MODEL_PATH}-{task}-{bar_size}.keras"
+)
+
+__SCALER_PATH = (
+    f"{SCALER_PATH}-{task}-{bar_size}.pkl"
+)
+
+__FEATURE_META_PATH = (
+    f"{FEATURE_META_PATH}-{task}-{bar_size}.json"
+)
+
 return_horizons = [int(value.strip()) for value in args.return_horizons.split(",")]
 if any(horizon <= 0 for horizon in return_horizons):
     raise ValueError("Every return horizon must be a positive integer.")
@@ -242,7 +286,7 @@ def prepare_data(df: pd.DataFrame):
         "_open",
         "_high",
         "_low",
-        # "_close",
+        "_close",
         # "_volume",
         "_Direction",
         "_Return",
@@ -376,11 +420,109 @@ def build_multi_regression_model(
         metrics=metrics,
     )
     return model
+def send_run_to_mlflow_tracker(
+    metadata_path,
+    experiment_name,
+    task,
+    bar_size,
+    horizon,
+    parameters=None,
+    metrics=None,
+):
+    """
+    Notify the containerized MLflow tracker that training has completed.
+
+    This function sends only JSON data. It does not upload the Keras,
+    pickle, or metadata files directly.
+
+    The tracker container locates those files through the shared
+    /models Docker volume.
+    """
+
+    tracker_base_url = os.getenv(
+        "TRACKER_API_BASE_URL"
+    )
+
+    if not tracker_base_url:
+        raise RuntimeError(
+            "TRACKER_API_BASE_URL is not configured. "
+            "Add it to the .env file."
+        )
+
+    timeout_seconds = int(
+        os.getenv(
+            "TRACKER_API_TIMEOUT_SECONDS",
+            "120",
+        )
+    )
+
+    metadata_path = os.path.abspath(
+        metadata_path
+    )
+
+    if not os.path.isfile(metadata_path):
+        raise FileNotFoundError(
+            f"Metadata file was not found: {metadata_path}"
+        )
+
+    with open(
+        metadata_path,
+        "r",
+        encoding="utf-8",
+    ) as metadata_file:
+        metadata = json.load(metadata_file)
+
+    payload = {
+        "task": task,
+        "barSize": bar_size,
+        "experimentName": experiment_name,
+        "horizon": int(horizon),
+        "metadata": metadata,
+        "parameters": parameters or {},
+        "metrics": metrics or {},
+    }
+
+    endpoint = (
+        f"{tracker_base_url.rstrip('/')}/log-run"
+    )
+
+    try:
+        response = requests.post(
+            endpoint,
+            json=payload,
+            timeout=timeout_seconds,
+        )
+
+        response.raise_for_status()
+
+    except requests.RequestException as error:
+        response_details = ""
+
+        if error.response is not None:
+            response_details = (
+                f"\nTracker response: "
+                f"{error.response.text}"
+            )
+
+        raise RuntimeError(
+            "The model was saved, but the request to the "
+            f"MLflow Tracker API failed: {error}"
+            f"{response_details}"
+        ) from error
+
+    result = response.json()
+
+    print("\nMLflow tracking completed")
+    print(f"Experiment: {result['experimentName']}")
+    print(f"Run ID: {result['runId']}")
+    print(f"Artifact URI: {result['artifactUri']}")
+
+    return result
 def main():
     os.makedirs(os.path.dirname(__MODEL_PATH) or ".", exist_ok=True)
-    clean_bar_name = str(bar_size).replace(" ", "").lower()
+    clean_bar_name = bar_size
     print(f"Loading data {stock_symbol}...")
-    df = pd.read_csv(f"{DATA_DIR}/semiconductor/combined_dataset_{clean_bar_name}.csv")
+    df = pd.read_csv(f"{DATA_DIR}/semiconductor/dataset_{clean_bar_name}.csv")
 
     # REGRESSION CHANGE 0: explicitly generate leakage-safe FUTURE returns.
     # At row t: target = log(close[t + horizon] / close[t]), calculated per ticker.
@@ -469,56 +611,56 @@ def main():
         "feature_scaler": feature_scaler,
         "target_scalers": target_scalers,
     }
-    joblib.dump(scaler_bundle, f"{__SCALER_PATH}")
-    with open(__FEATURE_META_PATH, "w") as f:
-        json.dump(
-            {
-                "feature_columns": feature_columns,
-                "window_size": WINDOW_SIZE,
-                "horizon": HORIZON,
-                "task": task,
-                "regression_targets": regression_targets,
-                "targets_are_scaled": bool(target_scalers),
-            },
-            f,
-            indent=2,
-        )
+    # Make sure the scaler and metadata directories exist.
+    os.makedirs(os.path.dirname(__SCALER_PATH) or ".",exist_ok=True,)
+    os.makedirs(os.path.dirname(__FEATURE_META_PATH) or ".",exist_ok=True,)
 
+    # Save the feature scaler and target scalers.
+    joblib.dump(scaler_bundle,__SCALER_PATH,)
+    print(f"Scaler saved to {__SCALER_PATH}")
 
+    # For multi-horizon regression, this represents the
+    # furthest prediction horizon.
+    primary_horizon = max(return_horizons)
+
+    feature_metadata = {
+        "feature_columns": feature_columns,
+        "window_size": WINDOW_SIZE,
+        "horizon": primary_horizon,
+        "return_horizons": return_horizons,
+        "bar_size": bar_size,
+        "task": task,
+        "regression_targets": regression_targets,
+        "targets_are_scaled": bool(target_scalers),
+    }
+
+    with open(__FEATURE_META_PATH,"w", encoding="utf-8",) as metadata_file:
+        json.dump(feature_metadata,metadata_file,indent=2,)
+
+    print(f"Feature metadata saved to "f"{__FEATURE_META_PATH}")
+
+    ############### end of json metadata ##############################
+    
     # REGRESSION CHANGE 5: create and train only the selected experiment.
-    if task == "classification":
-        transform_function = transform_classification
-    elif task == "regression":
-        transform_function = transform_regression
-    else:
-        transform_function = transform_multi_regression
+    if task == "classification":transform_function = transform_classification
+    elif task == "regression":transform_function = transform_regression
+    else:transform_function = transform_multi_regression
 
-    X_train_seq, y_train_seq = create_ticker_sequences(
-        train_df, transform_function, WINDOW_SIZE
-    )
-    X_validation_seq, y_validation_seq = create_ticker_sequences(
-        validation_df, transform_function, WINDOW_SIZE
-    )
-    X_test_seq, y_test_seq = create_ticker_sequences(
-        test_df, transform_function, WINDOW_SIZE
-    )
-
+    X_train_seq, y_train_seq = create_ticker_sequences(train_df, transform_function, WINDOW_SIZE)
+    X_validation_seq, y_validation_seq = create_ticker_sequences(validation_df, transform_function, WINDOW_SIZE)
+    X_test_seq, y_test_seq = create_ticker_sequences(test_df, transform_function, WINDOW_SIZE)
     if task == "classification":
-        model = build_classification_model(
-            X_train_seq.shape[1], X_train_seq.shape[2]
-        )
+        model = build_classification_model(X_train_seq.shape[1], X_train_seq.shape[2])
     elif task == "regression":
-        model = build_regression_model(
-            X_train_seq.shape[1],
-            X_train_seq.shape[2],
-            regression_targets[0],
-        )
+        model = build_regression_model(X_train_seq.shape[1],
+                                       X_train_seq.shape[2],
+                                       regression_targets[0],)
     else:
-        model = build_multi_regression_model(
-            X_train_seq.shape[1],
-            X_train_seq.shape[2],
-            regression_targets,
-        )
+        model = build_multi_regression_model(X_train_seq.shape[1],
+                                             X_train_seq.shape[2],
+                                             regression_targets,)
+        
+        
     model.summary()
     # Callbacks
     early_stop = callbacks.EarlyStopping(
@@ -528,16 +670,12 @@ def main():
         restore_best_weights=True,
         verbose=1
     )
-    checkpoint = callbacks.ModelCheckpoint(
-        __MODEL_PATH, monitor="val_loss", save_best_only=True
-    )
-    reduce_lr = callbacks.ReduceLROnPlateau(
-        monitor="val_loss",
-        factor=0.5,
-        patience=3,
-        min_lr=1e-5,
-        verbose=1
-    )
+    checkpoint = callbacks.ModelCheckpoint(__MODEL_PATH, monitor="val_loss", save_best_only=True)
+    reduce_lr = callbacks.ReduceLROnPlateau(monitor="val_loss",
+                                            factor=0.5,
+                                            patience=3,
+                                            min_lr=1e-5,
+                                            verbose=1)
 
     print("Number of tickers:", train_df["ticker"].nunique())
     print("Training rows:", len(train_df))
@@ -606,8 +744,53 @@ def main():
             print(f"{name} original-scale RMSE: {rmse:.8f}")
             print(f"{name} zero-return baseline MAE: {zero_baseline_mae:.8f}")
             print(f"{name} directional accuracy: {directional_accuracy:.4f}")
-    model.save(f"{__MODEL_PATH}")
+    
+    
+    ################ save model ###############
+    # Save the final model before notifying MLflow.
+    model.save(__MODEL_PATH)
+
     print(f"Model saved to {__MODEL_PATH}")
+    print(f"Scaler saved to {__SCALER_PATH}")
+    print(
+        f"Metadata saved to {__FEATURE_META_PATH}"
+    )
+
+    # Convert TensorFlow/NumPy values into regular Python floats
+    # so they can be serialized safely as JSON.
+    tracking_metrics = {
+        metric_name: float(metric_value)
+        for metric_name, metric_value in test_results.items()
+    }
+
+    tracking_parameters = {
+        "stock_symbol": stock_symbol,
+        "epochs": 100,
+        "batch_size": 64,
+        "learning_rate": 1e-3,
+        "window_size": WINDOW_SIZE,
+        "train_fraction": TRAIN_FRAC,
+        "validation_fraction": VAL_FRAC,
+        "number_of_features": len(feature_columns),
+        "number_of_training_rows": len(train_df),
+        "number_of_validation_rows": len(
+            validation_df
+        ),
+        "number_of_test_rows": len(test_df),
+        "number_of_training_sequences": len(
+            X_train_seq
+        ),
+    }
+
+    send_run_to_mlflow_tracker(
+        metadata_path=__FEATURE_META_PATH,
+        experiment_name=experiment_name,
+        task=task,
+        bar_size=bar_size,
+        horizon=max(return_horizons),
+        parameters=tracking_parameters,
+        metrics=tracking_metrics,
+    )
 
 
 if __name__ == "__main__":

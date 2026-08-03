@@ -34,9 +34,9 @@
     1
   ],
   "bar_size": "1day",
-  "task": "classification",
+  "task": "regression",
   "regression_targets": [
     "stock_FutureLogReturn_1"
   ],
-  "targets_are_scaled": false
+  "targets_are_scaled": true
 }
