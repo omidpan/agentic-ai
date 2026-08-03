@@ -38,25 +38,26 @@ services:
   # =========================================================================
   # 2. EXPERIMENT TRACKING LAYER (MLflow Setup)
   # =========================================================================
-  mlflow:
+  mlflow-server:
     image: ghcr.io/mlflow/mlflow:v2.14.1
     container_name: mlflow
     restart: unless-stopped
     ports:
-      - "5001:5000"
+      - "5001:5001"
     volumes:
       # Persists parameters, runs, and the SQLite database file on your Mac
-      - ./mlruns:/mlflow/mlruns
+      - ./models:/models
       # Persists binary models (.keras, .pkl) on your Mac
-      - ./mlartifacts:/mlflow/mlartifacts
+      - ./models/artifacts:/mlflow/mlartifacts
     command: >
       mlflow server 
-      --backend-store-uri sqlite:////mlflow/mlruns/mlflow.db
-      --default-artifact-root /mlflow/mlartifacts
+      --backend-store-uri sqlite:////models/mlflow.db
+      --serve-artifacts
+      --artifacts-destination /models/artifacts
       --host 0.0.0.0
-      --port 5000
+      --port 5001
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 10s
       timeout: 5s
       retries: 3

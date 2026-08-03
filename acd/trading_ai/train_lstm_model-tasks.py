@@ -11,7 +11,9 @@ from sklearn.utils.class_weight import compute_class_weight
 from tensorflow import keras
 from tensorflow.keras import callbacks, layers, Model   
 import tensorflow as tf
+from utils.utils import set_seeds
 
+## configs
 from config import (
     DATA_DIR,
     FEATURE_META_PATH,
@@ -24,7 +26,7 @@ from config import (
     WINDOW_SIZE,
 )
 
-from utils.utils import set_seeds
+
 
 parser = argparse.ArgumentParser(description="Process a stock symbol.")
 parser.add_argument(

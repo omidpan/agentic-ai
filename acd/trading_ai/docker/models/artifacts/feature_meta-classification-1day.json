@@ -1,0 +1,41 @@
+{
+  "feature_columns": [
+    "stock_close",
+    "stock_volume",
+    "stock_EMA_Ratio",
+    "stock_BodyPct",
+    "stock_Range_Pct",
+    "stock_ShadowImbalance",
+    "stock_GapPct",
+    "stock_HistoryCount15",
+    "stock_FullHistory15",
+    "stock_RollingStd15",
+    "stock_ReturnZ15",
+    "group_semiconductors",
+    "smh_close",
+    "smh_volume",
+    "smh_EMA_Ratio",
+    "smh_BodyPct",
+    "smh_Range_Pct",
+    "smh_ShadowImbalance",
+    "smh_GapPct",
+    "smh_HistoryCount15",
+    "smh_FullHistory15",
+    "smh_RollingStd15",
+    "smh_ReturnZ15",
+    "spy_close",
+    "spy_volume",
+    "spy_intraday_return",
+    "spy_high_low_range",
+    "spy_close_position",
+    "spy_GapPct",
+    "spy_Range_Pct"
+  ],
+  "window_size": 15,
+  "horizon": 1,
+  "task": "classification",
+  "regression_targets": [
+    "stock_FutureLogReturn_1"
+  ],
+  "targets_are_scaled": false
+}
