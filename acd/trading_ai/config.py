@@ -17,7 +17,7 @@ VAL_FRAC = 0.15
 # File Paths
 MODEL_PATH = BASE_DIR / 'models' / 'lstm_model'
 SCALER_PATH = BASE_DIR / 'models' / 'scaler'
-FEATURE_META_PATH = BASE_DIR / 'models' / 'feature_meta.json'
+FEATURE_META_PATH = BASE_DIR / 'models' / 'feature_meta'
 DATA_DIR = BASE_DIR / 'data'
 # Strategy Parameters
 CONFIDENCE_THRESHOLD = 0.005      # 0.5% minimum expected return to trigger trade

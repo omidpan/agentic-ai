@@ -4,8 +4,8 @@ max_workers: 10
 # Relative paths are resolved beneath BASE_DIR.
 output_root: data
 defaults:
-  duration: "5 Y"
-  bar_size: " 4 hours"
+  duration: "3 Y"
+  bar_size: " 1 hour"
   sessions:
     # - rth
     - extended
@@ -30,6 +30,6 @@ groups:
   context:
     symbols:
       - symbol: SMH
-        duration: "5 Y"
-  #     - symbol: SPY
-  #       duration: "5 Y"
+        duration: "3 Y"
+      - symbol: SPY
+        duration: "3 Y"

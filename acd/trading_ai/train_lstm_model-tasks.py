@@ -57,8 +57,9 @@ args = parser.parse_args()
 stock_symbol = args.symbol.lower()
 bar_size = args.bar_size
 task = args.task
-__MODEL_PATH=f"{MODEL_PATH}-{task}.keras"
-__SCALER_PATH=f"{SCALER_PATH}-{task}.pkl"
+__MODEL_PATH=f"{MODEL_PATH}-{task}-{bar_size}.keras"
+__SCALER_PATH=f"{SCALER_PATH}-{task}-{bar_size}.pkl"
+__FEATURE_META_PATH=f"{FEATURE_META_PATH}-{task}-{bar_size}.json"
 return_horizons = [int(value.strip()) for value in args.return_horizons.split(",")]
 if any(horizon <= 0 for horizon in return_horizons):
     raise ValueError("Every return horizon must be a positive integer.")
@@ -239,7 +240,7 @@ def prepare_data(df: pd.DataFrame):
         "_open",
         "_high",
         "_low",
-        "_close",
+        # "_close",
         # "_volume",
         "_Direction",
         "_Return",
@@ -467,7 +468,7 @@ def main():
         "target_scalers": target_scalers,
     }
     joblib.dump(scaler_bundle, f"{__SCALER_PATH}")
-    with open(FEATURE_META_PATH, "w") as f:
+    with open(__FEATURE_META_PATH, "w") as f:
         json.dump(
             {
                 "feature_columns": feature_columns,

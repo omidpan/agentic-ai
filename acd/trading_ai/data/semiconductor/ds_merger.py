@@ -25,11 +25,12 @@ dataset_names = {
 }
 
 dataset_context = {
-    "semiconductors": ["smh", "spy"]
+    # "semiconductors": ["smh", "spy"]
+    "semiconductors": []
 }
 
 # bar_size = "1day"
-bar_size = "4hours"
+bar_size = "1hours"
 session = "extended"
 
 REQUIRED_COLUMNS = {
@@ -618,7 +619,9 @@ if __name__ == "__main__":
 
     # Check whether the DataFrame contains any missing value
     has_missing = combined.isna().any().any()
-
+   ### for 4 hours dataset , drop stock_ShadowImbalance column because of missing values
+    if bar_size=="4hours":
+        combined.drop(columns=["stock_ShadowImbalance"], inplace=True)
     print("Has missing or empty values:", has_missing)
     rows_with_missing = combined[combined.isna().any(axis=1)]
     print(rows_with_missing)
@@ -628,7 +631,7 @@ if __name__ == "__main__":
     # print("First two combined rows:")
     # # print(combined.head(2).to_string(index=False))
 
-    output_path = BASE_DIR / "combined_dataset_4hour_csv"
+    output_path = BASE_DIR / "combined_dataset_4hours.csv"
     
 ################################## correlation matrix ###################
     import matplotlib.pyplot as plt

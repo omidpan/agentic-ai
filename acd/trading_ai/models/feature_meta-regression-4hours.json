@@ -14,9 +14,9 @@
   ],
   "window_size": 15,
   "horizon": 1,
-  "task": "classification",
+  "task": "regression",
   "regression_targets": [
     "stock_FutureLogReturn_1"
   ],
-  "targets_are_scaled": false
+  "targets_are_scaled": true
 }
