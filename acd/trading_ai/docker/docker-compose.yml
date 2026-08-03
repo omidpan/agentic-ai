@@ -1,9 +1,12 @@
 version: '3.8'
 
 services:
+  # =========================================================================
+  # 1. DATA STREAMING LAYER (Zookeeperless Kafka / KRaft Mode)
+  # =========================================================================
   kafka:
     image: apache/kafka:latest
-    container_name: local_kafka
+    container_name: kafka
     ports:
       - "9092:9092"
     environment:
@@ -23,12 +26,50 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       LOG4J_LOGGER_ORG_APACHE_KAFKA: 'INFO'
-# Tell Kafka to store logs/partitions in the standard data directory
+      
+      # Tell Kafka to store logs/partitions in the standard data directory
       KAFKA_LOG_DIRS: '/var/lib/kafka/data'
     volumes:
-      # 1. Map the internal Kafka data directory to a permanent Docker volume
+      # Map the internal Kafka data directory to a permanent Docker volume
       - kafka_data:/var/lib/kafka/data
+    networks:
+      - trading_pipeline_network
 
-# 2. Declare the named volume at the bottom of the file
+  # =========================================================================
+  # 2. EXPERIMENT TRACKING LAYER (MLflow Setup)
+  # =========================================================================
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.14.1
+    container_name: mlflow
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    volumes:
+      # Persists parameters, runs, and the SQLite database file on your Mac
+      - ./mlruns:/mlflow/mlruns
+      # Persists binary models (.keras, .pkl) on your Mac
+      - ./mlartifacts:/mlflow/mlartifacts
+    command: >
+      mlflow server 
+      --backend-store-uri sqlite:////mlflow/mlruns/mlflow.db
+      --default-artifact-root /mlflow/mlartifacts
+      --host 0.0.0.0
+      --port 5000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - trading_pipeline_network
+
+# =========================================================================
+# NETWORKS & VOLUMES INTERFACES
+# =========================================================================
 volumes:
-  kafka_data:      
+  kafka_data:
+
+networks:
+  trading_pipeline_network:
+    name: trading_pipeline_network
+    driver: bridge

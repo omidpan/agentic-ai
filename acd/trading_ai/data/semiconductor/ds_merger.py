@@ -26,11 +26,11 @@ dataset_names = {
 
 dataset_context = {
     # "semiconductors": ["smh", "spy"]
-    "semiconductors": []
+    # "semiconductors": ['smh']
 }
 
 # bar_size = "1day"
-bar_size = "1hours"
+bar_size = "4hours"
 session = "extended"
 
 REQUIRED_COLUMNS = {
@@ -92,6 +92,15 @@ def add_candle_features(
         lower_shadow - upper_shadow,
         candle_range
     )
+    
+    df[f"{feature_prefix}_BodyToRange"] = safe_divide(
+            np.abs(body),
+            candle_range
+        )
+    
+    df[f"{feature_prefix}_Bullish"] = (
+            df["close"] > df["open"]
+        ).astype(int)
     return df
 def add_gap_features(
     df: pd.DataFrame,
@@ -168,47 +177,7 @@ def add_rolling_feature(
     )
 
     return df
-def add_zscore_feature(
-    df: pd.DataFrame,
-    window: int = WINDOW_SIZE,
-    feature_prefix: str = "stock"
-) -> pd.DataFrame:
-    """
-    Add the rolling z-score of the current log return.
 
-    Uses only the current and previous observations.
-    Preserves all rows without using future information.
-    """
-
-    df = df.copy()
-
-    return_column = f"{feature_prefix}_LogReturn"
-    zscore_column = f"{feature_prefix}_ReturnZ{window}"
-    # missing_column = f"{zscore_column}_Missing"
-
-    returns = df[return_column]
-
-    # Partial windows preserve the early rows.
-    # At least two valid returns are needed for standard deviation.
-    rolling_mean = returns.rolling(
-        window=window,
-        min_periods=2
-    ).mean()
-
-    rolling_std = returns.rolling(
-        window=window,
-        min_periods=2
-    ).std()
-
-    # Treat zero or extremely small standard deviation as unavailable.
-    valid_std = rolling_std.mask(
-        rolling_std.abs() < 1e-12
-    )
-
-    df[zscore_column] = safe_divide(
-        returns - rolling_mean,
-        valid_std
-    )
 def add_zscore_feature(
     df: pd.DataFrame,
     window: int = WINDOW_SIZE,
@@ -631,7 +600,7 @@ if __name__ == "__main__":
     # print("First two combined rows:")
     # # print(combined.head(2).to_string(index=False))
 
-    output_path = BASE_DIR / "combined_dataset_4hours.csv"
+    output_path = BASE_DIR / f"combined_dataset_{bar_size}.csv"
     
 ################################## correlation matrix ###################
     import matplotlib.pyplot as plt
