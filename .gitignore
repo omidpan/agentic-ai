@@ -12,3 +12,5 @@ __pycache__
 *.db
 *checkpoint.json
 *.png
+*feature_meta_*.json
+*feature_meta-*.json

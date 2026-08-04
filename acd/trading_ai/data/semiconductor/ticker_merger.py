@@ -31,7 +31,8 @@ SESSION_START_HOUR = 4
 SESSION_END_HOUR = 19
 SESSION_CANDLE_COUNT = SESSION_END_HOUR - SESSION_START_HOUR + 1
 
-TICKERS = ["nvda", "amd", "avgo", "intc", "mrvl", "mu", "tsm", "amat"]
+# TICKERS = ["nvda", "amd", "avgo", "intc", "mrvl", "mu", "tsm", "amat"]
+TICKERS = ["nvda"]
 PRICE_VOLUME_COLUMNS = ["open", "high", "low", "close", "volume"]
 PRICE_COLUMNS = ["open", "high", "low", "close"]
 REQUIRED_COLUMNS = {"datetime", *PRICE_VOLUME_COLUMNS}
@@ -473,7 +474,7 @@ if __name__ == "__main__":
         merge_semiconductor_stocks()
     )
 
-    output_path = BASE_DIR / f"combined_semiconductor_{BAR_SIZE}.csv"
+    output_path = BASE_DIR / f"nvda_no_missing_{BAR_SIZE}.csv"
     audit_path = BASE_DIR / "synthetic_candles_audit.csv"
     unfilled_path = BASE_DIR / "unfilled_missing_candles.csv"
 

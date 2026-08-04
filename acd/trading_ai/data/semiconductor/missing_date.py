@@ -6,17 +6,31 @@ tickers, avoiding false gaps for nights, weekends, and market holidays.
 """
 
 from pathlib import Path
-
+import argparse as ar
 import pandas as pd
+parser = ar.ArgumentParser(description="Process a stock symbol.")
+parser.add_argument("-s" ,"--symbol",
+                    type=str,
+                    required=False,
+                    help="The stock symbol to process. default is NVDA.", 
+                    nargs='?', default="NVDA")
+parser.add_argument("-bs", "--bar_size",
+                    type=str,
+                    required=False,
+                    help="candle size of historical data. default is 1 hour.", 
+                    nargs='?', default="1 hour")
+args = parser.parse_args()
 
-
-INPUT_FILE = Path("./combined_semiconductor_1hour.csv")
+# Access the value using dot notation
+stock_symbol = args.symbol.lower()
+bar_size = args.bar_size
+INPUT_FILE = Path(f"./{stock_symbol}_{bar_size}_extended.csv")
 OUTPUT_DIR = Path(".")
 
-MISSING_TIMESTAMPS_FILE = "semiconductor_1hour_missing_timestamps.csv"
-TICKER_SUMMARY_FILE = "semiconductor_1hour_missing_summary_by_ticker.csv"
-DAILY_SUMMARY_FILE = "semiconductor_1hour_missing_summary_by_date.csv"
-DUPLICATES_FILE = "semiconductor_1hour_duplicate_rows.csv"
+MISSING_TIMESTAMPS_FILE = f"{stock_symbol}_{bar_size}_missing_timestamps.csv"
+TICKER_SUMMARY_FILE = f"{stock_symbol}_{bar_size}_missing_summary_by_ticker.csv"
+DAILY_SUMMARY_FILE = f"{stock_symbol}_{bar_size}_missing_summary_by_date.csv"
+DUPLICATES_FILE = f"{stock_symbol}_{bar_size}_duplicate_rows.csv"
 
 
 def load_and_validate_data(file_path: Path) -> tuple[pd.DataFrame, int]:

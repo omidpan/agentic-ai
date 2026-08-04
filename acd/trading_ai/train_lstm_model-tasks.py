@@ -44,7 +44,7 @@ parser.add_argument(
     "-s", "--symbol", type=str, required=False, default="NVDA", help="The stock symbol."
 )
 parser.add_argument(
-    "-bs", "--bar_size", type=str, required=False, default="1 hour", help="Candle size."
+    "-bs", "--bar_size", type=str, required=False, default="4 hours", help="Candle size."
 )
 # REGRESSION CHANGE 1: choose the experiment without editing the source code.
 parser.add_argument(
@@ -521,7 +521,7 @@ def send_run_to_mlflow_tracker(
 def main():
     os.makedirs(os.path.dirname(__MODEL_PATH) or ".", exist_ok=True)
     clean_bar_name = bar_size
-    print(f"Loading data {stock_symbol}...")
+    print(f"Loading data .....")
     df = pd.read_csv(f"{DATA_DIR}/semiconductor/dataset_{clean_bar_name}.csv")
 
     # REGRESSION CHANGE 0: explicitly generate leakage-safe FUTURE returns.

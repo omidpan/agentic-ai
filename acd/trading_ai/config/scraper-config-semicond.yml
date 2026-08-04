@@ -5,7 +5,7 @@ max_workers: 10
 output_root: data
 defaults:
   duration: "3 Y"
-  bar_size: " 1 hour"
+  bar_size: " 4 hour"
   sessions:
     # - rth
     - extended

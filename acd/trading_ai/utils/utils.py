@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow import keras
-import yfinance as yf
+# import yfinance as yf
 
 from config import (MODEL_PATH, SCALER_PATH,
     FEATURE_META_PATH, RANDOM_SEED, TRAIN_FRAC, VAL_FRAC
@@ -19,13 +19,13 @@ def set_seeds(seed=RANDOM_SEED):
     tf.random.set_seed(seed)
 
 
-def download_raw_data(ticker, period, interval) -> pd.DataFrame:
-    """Downloads raw market history from Yahoo Finance and formats indices."""
-    df = yf.download(ticker, period=period, interval=interval, prepost=True)
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.droplevel('Ticker')
-    df.index = df.index.tz_localize(None)
-    return df
+# def download_raw_data(ticker, period, interval) -> pd.DataFrame:
+#     """Downloads raw market history from Yahoo Finance and formats indices."""
+#     df = yf.download(ticker, period=period, interval=interval, prepost=True)
+#     if isinstance(df.columns, pd.MultiIndex):
+#         df.columns = df.columns.droplevel('Ticker')
+#     df.index = df.index.tz_localize(None)
+#     return df
 
 
 def chronological_split(df: pd.DataFrame, train_frac=TRAIN_FRAC, val_frac=VAL_FRAC):
