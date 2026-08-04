@@ -3,6 +3,8 @@
     "editor.fontFamily": "'Fira Code', 'Consolas', 'Courier New', monospace",
     "editor.fontSize": 22,
     "editor.fontLigatures": true,
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
 
     // "terminal.integrated.env.osx": {
     //       "CONDA_DEFAULT_ENV": "stock",

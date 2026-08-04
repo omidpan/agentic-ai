@@ -42,17 +42,19 @@ improve directional accuracy and which ones simply add noise.
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 import argparse
 from config import DATA_DIR,WINDOW_SIZE
 parser = argparse.ArgumentParser(description="Process a stock symbol.")
 parser.add_argument("-s" ,"--symbol",
                     type=str,
-                    required=True,
+                    required=False,
                     help="The stock symbol to process. default is NVDA.", 
                     nargs='?', default="NVDA")
 parser.add_argument("-bs", "--bar_size",
                     type=str,
-                    required=True,
+                    required=False,
                     help="candle size of historical data. default is 1 hour.", 
                     nargs='?', default="1 hour")
 args = parser.parse_args()
@@ -82,7 +84,7 @@ def safe_divide(a, b):
 # Log Return Features
 # ----------------------------------------------------------
 
-def add_log_returns(df: pd.DataFrame) -> pd.DataFrame:
+def add_log_returns(df: pd.DataFrame,rotate:int) -> pd.DataFrame:
     """
     Adds logarithmic return features.
 
@@ -94,20 +96,13 @@ def add_log_returns(df: pd.DataFrame) -> pd.DataFrame:
     LogReturn5
     LogReturn10
     """
-
+    if(rotate>5):
+        rotate=5
     df = df.copy()
-
+  
     close = df["close"]
-
-    df["LogReturn1"] = np.log(close / close.shift(1))
-
-    df["LogReturn2"] = np.log(close / close.shift(2))
-
-    df["LogReturn3"] = np.log(close / close.shift(3))
-
-    df["LogReturn5"] = np.log(close / close.shift(5))
-
-    df["LogReturn10"] = np.log(close / close.shift(10))
+    for i in range(1,rotate):
+        df[f"LogReturn{i}"] = np.log(close / close.shift(i))
 
     return df
 
@@ -223,7 +218,7 @@ def add_part1_features(df: pd.DataFrame) -> pd.DataFrame:
     Applies all Part-1 feature engineering.
     """
 
-    df = add_log_returns(df)
+    df = add_log_returns(df,1)
 
     df = add_candle_features(df)
 
@@ -847,16 +842,61 @@ def clean_dataset(
     """
     Removes rows containing NaN or infinity.
     """
+    df=df.copy()
+#     feature_columns = [column for column in df.columns
+#                        if column.startswith(("stock_", "smh_", "spy_"))
+#         and not column.endswith((
+#         "_open",
+#         # "_close",
+#         "_high",
+#         "_low",
+#         # "_volume",
+#         "_Direction",
+#         "_Return",
+#         "_LogReturn",
+#         "ock_Count15",    
+#         "mh_Count15",
+#         "_ShadowImbalance",   
+#     ))
+# ]
 
+
+    feature_report = pd.DataFrame({
+    "nan_count": df.isna().sum(),
+    "positive_inf": df.eq(np.inf).sum(),
+    "negative_inf": df.eq(-np.inf).sum(),
+    # "min": df.replace(
+    #     [np.inf, -np.inf], np.nan
+    # ).min(),
+    # "max": df.replace(
+    #     [np.inf, -np.inf], np.nan
+    # ).max(),
+    'empty_string_count': (df == '').sum(),
+})
+    # Must be > 0 for nan, positive_inf, empty_string, AND < 0 for negative_inf
+    filtered_report = feature_report[
+        (feature_report["nan_count"] > 0) &
+        (feature_report["positive_inf"] > 0) &
+        (feature_report["empty_string_count"] > 0) &
+        (feature_report["negative_inf"] < 0)
+    ]
+
+    # 2. Filter the COLUMNS of the report itself
+    # This removes any metric column (like 'min' or 'max') if it only has 0s left
+    filtered_report = filtered_report.loc[:, (filtered_report != 0).any(axis=0)]
+
+    # Display the clean, issue-only report
+
+    print(filtered_report)
     df = df.replace(
         [np.inf, -np.inf],
         np.nan
     )
 
-    df = df.dropna()
+    # df = df.dropna()
 
     df = df.reset_index(drop=True)
-
+    print(df.isna().sum().sort_values(ascending=False))
     return df
 
 
@@ -931,37 +971,19 @@ def prepare_features(
     # Part 2
     # -------------------------
 
-    df = add_part2_features(df)
+    # df = add_part2_features(df)
 
     # -------------------------
     # Part 3
     # -------------------------
 
-    df = add_part3_features(
-
-        df,
-
-        spy_df,
-
-        qqq_df,
-
-        vix_df,
-
-        sector_df
-
-    )
+    # df = add_part3_features(df,spy_df,qqq_df,vix_df,sector_df)
 
     # -------------------------
     # Target
     # -------------------------
 
-    df = create_target(
-
-        df,
-
-        horizon
-
-    )
+    # df = create_target(df,horizon)
 
     # -------------------------
     # Cleanup
@@ -975,36 +997,107 @@ def prepare_features(
 
     feature_columns = get_feature_columns(df)
 
-    return (
+    return (df,feature_columns)
 
-        df,
+def refactor_columns(df):
+    df=df.copy()
+    exclude = {
+        "ticker",
+        "ticker_id",
+        "group_semiconductors",
+        "datetime",
+    }
+    
+    df = df.rename(
+            columns=lambda col: (
+                col.lower()
+                if col.lower() in exclude or col.lower().startswith("stock_") or (
+                    col.lower().startswith("smm_") or col.lower().startswith("spy_")
+                )
+                else f"stock_{col.lower()}"
+            )
+        )
+    return df
+########## display ##########
+def display(df):
+    feature_columns=df.columns
+    correlation_matrix = df[feature_columns].corr(numeric_only=True,method='pearson')
+    
+    plt.figure(figsize=(20, 15))
 
-        feature_columns
+    sns.heatmap(
+            correlation_matrix,
+            annot=True,       # Display correlation numbers
+            fmt=".2f",        # Show two decimal places
+            cmap="coolwarm",  # Blue-white-red colors
+            center=0,
+            vmin=-1,
+            vmax=1
+        )
 
+    plt.title("Feature Correlation Heatmap")
+    plt.tight_layout()
+    plt.show()
+# --------------------------------------------------
+    # 4. Create ticker IDs for an embedding layer
+    # --------------------------------------------------
+def feature_map_and_encoder(stocks:pd.DataFrame):
+    stocks=stocks.copy()
+    unique_tickers = sorted(stocks["ticker"].unique())
+
+    ticker_to_id = {
+        ticker: ticker_id
+        for ticker_id, ticker in enumerate(unique_tickers)
+    }
+
+    stocks["ticker_id"] = (
+        stocks["ticker"]
+        .map(ticker_to_id)
+        .astype("int32")
     )
+    
+    print("Ticker mapping:", ticker_to_id)
+     # --------------------------------------------------
+    # 5. One-hot encode stock groups
+    # --------------------------------------------------
+    stocks['semiconductors']=stocks['group_semiconductors']
+    stocks = pd.get_dummies(
+            stocks,
+            columns=["semiconductors"],
+            prefix='group_semiconductor',
+            dtype="int8",
+        )
+    stocks.sort_values(["datetime", "ticker"],ascending=[True, True],).reset_index(drop=True)
+    return stocks
+
 
 
 # ----------------------------------------------------------
 # Executing features
 # ----------------------------------------------------------
-
 if __name__ == "__main__":
         # read data from CSV, add indicators, and save to new CSV for training
     clean_bar_name = str(bar_size).replace(" ", "").lower()
-    df = pd.read_csv(f"{DATA_DIR}/{stock_symbol}_{clean_bar_name}.csv")
-    spy_df=pd.read_csv(f"{DATA_DIR}/spy_{clean_bar_name}.csv")
-    qqq_df=pd.read_csv(f"{DATA_DIR}/qqq_{clean_bar_name}.csv")
+    df = pd.read_csv(f"{DATA_DIR}/semiconductor/dataset_{clean_bar_name}.csv")
+    df=df.copy()
+    df = df.rename(
+    columns=lambda col: (
+        col.lower()
+        .removeprefix("stock_")
+    )
+)
+    # spy_df=pd.read_csv(f"{DATA_DIR}/spy_{clean_bar_name}.csv")
+    # qqq_df=pd.read_csv(f"{DATA_DIR}/qqq_{clean_bar_name}.csv")
     df, feature_columns = prepare_features(df,horizon=1)
+    df=refactor_columns(df)
+    df=feature_map_and_encoder(df)
+    df=clean_dataset(df)
+    display(df)
     print(df.head())
-    print(df.describe())
-
-    print()
 
     print(feature_columns)
-
-    print()
 
     print(len(feature_columns),"features")
     
     # df.to_csv(f"{DATA_DIR}/{stock_symbol}_{clean_bar_name}_WIP.csv", index=False)
-    df.to_csv(f"{DATA_DIR}/{stock_symbol}_{clean_bar_name}_features.csv", index=False)
+    df.to_csv(f"{DATA_DIR}/dataset_{clean_bar_name}_features.csv", index=False)
