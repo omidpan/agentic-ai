@@ -72,19 +72,44 @@ EPSILON = 1e-10
 # ----------------------------------------------------------
 # Helper
 # ----------------------------------------------------------
+def safe_divide(numerator, denominator, zero_value=EPSILON):
+    numerator = pd.Series(
+        numerator,
+        index=denominator.index,
+        dtype=float,
+    )
 
-def safe_divide(a, b):
-    """
-    Safe division that prevents divide-by-zero.
-    """
-    return a / (b + EPSILON)
+    denominator = pd.Series(
+        denominator,
+        index=denominator.index,
+        dtype=float,
+    )
+
+    result = pd.Series(
+        zero_value,
+        index=denominator.index,
+        dtype=float,
+    )
+
+    valid = denominator.notna() & denominator.ne(0)
+
+    result.loc[valid] = (
+        numerator.loc[valid]
+        / denominator.loc[valid]
+    )
+
+    # Preserve NaN when the original inputs are missing.
+    missing_input = numerator.isna() | denominator.isna()
+    result.loc[missing_input] = np.nan
+
+    return result
 
 
 # ----------------------------------------------------------
 # Log Return Features
 # ----------------------------------------------------------
 
-def add_log_returns(df: pd.DataFrame,rotate:int) -> pd.DataFrame:
+def add_log_returns(df: pd.DataFrame) -> pd.DataFrame:
     """
     Adds logarithmic return features.
 
@@ -96,33 +121,44 @@ def add_log_returns(df: pd.DataFrame,rotate:int) -> pd.DataFrame:
     LogReturn5
     LogReturn10
     """
-    if(rotate>5):
-        rotate=5
+
     df = df.copy()
-  
+
     close = df["close"]
-    for i in range(1,rotate):
-        df[f"LogReturn{i}"] = np.log(close / close.shift(i))
+
+    df["LogReturn1"] = np.log(close / close.shift(1))
+
+    df["LogReturn2"] = np.log(close / close.shift(2))
+
+    df["LogReturn3"] = np.log(close / close.shift(3))
+
+    df["LogReturn5"] = np.log(close / close.shift(5))
+
+    df["LogReturn10"] = np.log(close / close.shift(10))
 
     return df
-
 
 # ----------------------------------------------------------
 # Candle Features
 # ----------------------------------------------------------
 
 def add_candle_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Generates candle structure features.
-
-    These features often contain more predictive
-    information than SMA/EMA indicators.
-    """
-
+    '''
+        candidate_features = [
+        "BodyPct",
+        "RangePct",
+        "UpperShadowPct",
+        "LowerShadowPct",
+        "BodyToRange",
+        "Bullish",
+        # "ZeroVolume",
+        "StrangeFlatCandle",
+        "InactiveFlatCandle"
+    ]
+    '''
     df = df.copy()
 
     body = df["close"] - df["open"]
-
     candle_range = df["high"] - df["low"]
 
     upper_shadow = (
@@ -135,42 +171,70 @@ def add_candle_features(df: pd.DataFrame) -> pd.DataFrame:
         - df["low"]
     )
 
-    df["Body"] = body
-
-    df["BodyPct"] = safe_divide(
-        body,
-        df["open"]
+    # Do not clip shadows until invalid OHLC rows are identified.
+    invalid_ohlc = (
+        (df["high"] < df[["open", "close"]].max(axis=1))
+        | (df["low"] > df[["open", "close"]].min(axis=1))
+        | (df["high"] < df["low"])
     )
 
-    df["Range"] = candle_range
+    flat_candle = (
+        df["open"].eq(df["high"])
+        & df["open"].eq(df["low"])
+        & df["open"].eq(df["close"])
+    )
 
+    positive_volume = df["volume"].gt(0)
+    zero_volume = df["volume"].eq(0)
+
+    df["Body"] = body
+    df["BodyPct"] = safe_divide(body, df["open"])
+
+    df["Range"] = candle_range
     df["RangePct"] = safe_divide(
         candle_range,
-        df["close"]
+        df["close"],
     )
 
     df["UpperShadow"] = upper_shadow
-
     df["LowerShadow"] = lower_shadow
 
     df["UpperShadowPct"] = safe_divide(
         upper_shadow,
-        candle_range
+        candle_range,
     )
 
     df["LowerShadowPct"] = safe_divide(
         lower_shadow,
-        candle_range
+        candle_range,
     )
 
     df["BodyToRange"] = safe_divide(
-        np.abs(body),
-        candle_range
+        body.abs(),
+        candle_range,
     )
 
     df["Bullish"] = (
         df["close"] > df["open"]
-    ).astype(int)
+    ).astype("int8")
+
+    # Division and data-quality flags
+    df["ZeroOpen"] = df["open"].eq(0).astype("int8")
+    df["ZeroClose"] = df["close"].eq(0).astype("int8")
+    df["ZeroRange"] = candle_range.eq(0).astype("int8")
+    df["ZeroVolume"] = zero_volume.astype("int8")
+    df["InvalidOHLC"] = invalid_ohlc.astype("int8")
+
+    # Candle classification flags
+    df["FlatCandle"] = flat_candle.astype("int8")
+
+    df["StrangeFlatCandle"] = (
+        flat_candle & positive_volume
+    ).astype("int8")
+
+    df["InactiveFlatCandle"] = (
+        flat_candle & zero_volume
+    ).astype("int8")
 
     return df
 
@@ -729,10 +793,7 @@ def add_zscore_features(
             .rolling(window)
             .std()
         )
-
-        return (
-            series - mean
-        ) / (std + EPSILON)
+        return safe_divide((series-mean)/std) 
 
     df["CloseZ"] = zscore(
         df["close"]
