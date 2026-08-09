@@ -1,11 +1,11 @@
 # Number of symbols downloaded concurrently. Keep this conservative for IB pacing.
-max_workers: 10
+max_workers: 5
 
 # Relative paths are resolved beneath BASE_DIR.
 output_root: data
 defaults:
   duration: "5 Y"
-  bar_size: "4 hours"
+  bar_size: "1 min"
   sessions:
     # - rth
     - extended
@@ -16,13 +16,13 @@ groups:
   semiconductor:
     symbols:
       - NVDA
-      - AMD
-      - AVGO
-      - TSM
-      - MRVL
+      # - AMD
+      # - AVGO
+      # - TSM
+      # - MRVL
       - AMAT
-      - INTC      
-      - MU
+      # - INTC      
+      # - MU
 
       # # A symbol may override any default:
       # - symbol: INTC
@@ -31,5 +31,5 @@ groups:
     symbols:
       - symbol: SMH
         duration: "5 Y"
-      - symbol: SPY
-        duration: "5 Y"
+      # - symbol: SPY
+      #   duration: "5 Y"

@@ -13,10 +13,15 @@ import pandas as pd
 
 BASE_DIR = Path(__file__).resolve().parent
 SESSION = "extended"
-BAR_SCHEDULES = {
-    "1hour": [*range(4, 20)],
-    "4hours": [4, 8, 12, 16],
+
+BAR_FREQUENCIES = {
+    "1hour": "1h",
+    "4hours": "4h",
+    "30min": "30min",
+    "15min": "15min",
+    "1min": "1min",
 }
+
 BAR_SIZE_ALIASES = {
     "1hour": "1hour",
     "1 hour": "1hour",
@@ -26,7 +31,17 @@ BAR_SIZE_ALIASES = {
     "4hour": "4hours",
     "4 hour": "4hours",
     "4h": "4hours",
+    "30min": "30min",
+    "30 min": "30min",
+    "30m": "30min",
+    "15min": "15min",
+    "15 min": "15min",
+    "15m": "15min",
+    "1min": "1min",
+    "1 min": "1min",
+    "1m": "1min",
 }
+
 PRICE_VOLUME_COLUMNS = ["open", "high", "low", "close", "volume"]
 PRICE_COLUMNS = ["open", "high", "low", "close"]
 REQUIRED_COLUMNS = {"datetime", *PRICE_VOLUME_COLUMNS}
@@ -46,7 +61,7 @@ def parse_arguments():
         "-bs",
         "--bar-size",
         default="1hour",
-        help="Supported values: 1hour or 4hours; default: 1hour.",
+        help="Supported values: 1hour, 4hours, 30min, 15min, 1min; default: 1hour.",
     )
     parser.add_argument(
         "-c",
@@ -61,7 +76,7 @@ def normalize_bar_size(value: str) -> str:
     normalized = " ".join(value.lower().strip().split())
     if normalized not in BAR_SIZE_ALIASES:
         raise ValueError(
-            f"Unsupported bar size {value!r}. Use 1hour or 4hours."
+            f"Unsupported bar size {value!r}. Use 1hour, 4hours, 30min, 15min, or 1min."
         )
     return BAR_SIZE_ALIASES[normalized]
 
@@ -123,16 +138,16 @@ def build_expected_datetimes(
     observed_dates = (
         df["datetime"].dt.normalize().drop_duplicates().sort_values()
     )
-    hours = BAR_SCHEDULES[bar_size]
+    freq = BAR_FREQUENCIES[bar_size]
 
-    return pd.DatetimeIndex(
-        [
-            date + pd.Timedelta(hours=hour)
-            for date in observed_dates
-            for hour in hours
-        ],
-        name="datetime",
-    )
+    datetimes = []
+    for date in observed_dates:
+        start_dt = date + pd.Timedelta(hours=4)
+        end_dt = date + pd.Timedelta(hours=19)
+        session_range = pd.date_range(start=start_dt, end=end_dt, freq=freq)
+        datetimes.extend(session_range)
+
+    return pd.DatetimeIndex(datetimes, name="datetime")
 
 
 def find_consecutive_windows(positions: list[int]) -> list[list[int]]:
@@ -336,7 +351,6 @@ def repair_stock(
     repaired[PRICE_COLUMNS] = repaired[PRICE_COLUMNS].round(2)
     repaired["volume"] = repaired["volume"].round().astype("int64")
 
-    # Preserve every original non-OHLCV column without creating ticker/group.
     repaired = repaired[[column for column in original_columns if column in repaired]]
     repaired = repaired.sort_values("datetime").reset_index(drop=True)
     return repaired, audit, unfilled
@@ -347,10 +361,10 @@ def main() -> None:
     symbol = args.symbol.strip().lower()
     bar_size = normalize_bar_size(args.bar_size)
     
-    input_path = BASE_DIR / f"{symbol}_{bar_size}_{SESSION}_revisit" if not  args.context else Path("../context") / f"{symbol}_{bar_size}_{SESSION}_revisit"
-    output_path = BASE_DIR / f"{symbol}_{bar_size}_{SESSION}_revisit" if not  args.context else Path("../context")/f"{symbol}_{bar_size}_{SESSION}_revisit"
-    audit_path = BASE_DIR / f"{symbol}_{bar_size}_synthetic_audit.csv" if not  args.context else Path("../context")/f"{symbol}_{bar_size}_synthetic_audit.csv"
-    unfilled_path = BASE_DIR / f"{symbol}_{bar_size}_unfilled_audit.csv" if not  args.context else Path("../context")/f"{symbol}_{bar_size}_unfilled_audit.csv"
+    input_path = BASE_DIR / f"{symbol}_{bar_size}_{SESSION}.csv" if not args.context else Path("../context") / f"{symbol}_{bar_size}_{SESSION}.csv"
+    output_path = BASE_DIR / f"{symbol}_{bar_size}_{SESSION}_revisit.csv" if not args.context else Path("../context")/f"{symbol}_{bar_size}_{SESSION}_revisit.csv"
+    audit_path = BASE_DIR / f"{symbol}_{bar_size}_synthetic_audit.csv" if not args.context else Path("../context")/f"{symbol}_{bar_size}_synthetic_audit.csv"
+    unfilled_path = BASE_DIR / f"{symbol}_{bar_size}_unfilled_audit.csv" if not args.context else Path("../context")/f"{symbol}_{bar_size}_unfilled_audit.csv"
 
     df = load_stock(input_path)
     expected_datetimes = build_expected_datetimes(df, bar_size)

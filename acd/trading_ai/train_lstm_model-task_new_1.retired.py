@@ -62,116 +62,29 @@ from config import (
 # FIXED INPUT FEATURES FOR THIS EXPERIMENT
 # ============================================================
 # These are the only columns passed to the LSTM as X.
-'''
- Classification — final 8 features
- CLASSIFICATION_FEATURES = [
-    "BodyPct",
-    "GapPct",
-    "UpperShadowPct",
-    "LowerShadowPct",
-    "EMA_Ratio",
-    "PriceEMA20",
-    "Volatility5",
-    "TrueRangePct",
-]
-Target class
-CLASSIFICATION_TARGETS = [
-    "FutureDirection",
-]
-
-Regression final features
-
-REGRESSION_FEATURES = [
-    "BodyPct",
-    "GapPct",
-    "UpperShadowPct",
-    "LowerShadowPct",
-    "EMA_Ratio",
-    "PriceEMA20",
-    "Volatility5",
-    "TrueRangePct",
-    "smh_RollingQuantile25",
-    "spy_Volatility10",
-]
-Final Target for regression
-REGRESSION_TARGETS = [
-    "FutureLogReturn1",
-]
-'''
 LESS_COMPLEX_MATRIX = [
-    'BodyPct',
-    'GapPct',
-     'UpperShadowPct',
-     'LowerShadowPct',
-       'EMA_Ratio',
-       'PriceEMA20',
-       'Volatility5',
-      'TrueRangePct',
-      # 'smh_RollingQuantile25',
-      'spy_Volatility10'
-      #  "smh_RollingKurtosis",
-      #  "RollingStd",
-   
-    # "EMA_Ratio",
-    # "LowerShadowPct",
-    # "RollingKurtosis",
-    # "RollingSkew",
-    # "RollingStd",
-    # "UpperShadowPct",
-    # Volatility
-    # "Volatility5",
-    # "VolumeChange",
-    # "spy_EMA_Ratio",
-    # "spy_LowerShadowPct",
-    # "smh_LowerShadowPct",
-    # "spy_RollingKurtosis",
-    # "smh_RollingKurtosis",
-    # "spy_RollingSkew",
-    # "smh_RollingSkew",
-    # "spy_UpperShadowPct",
-    # "smh_UpperShadowPct",
-    # "spy_VolumeChange",
-    # "smh_VolumeChange",
-    # "smh_GapDirection",
-    # "spy_GapDirection",
+    "EMA_Ratio",
+    "LowerShadowPct",
+    "RollingKurtosis",
+    "RollingSkew",
+    "RollingStd",
+    "UpperShadowPct",
+    "Volatility5",
+    "VolumeChange",
+    "spy_EMA_Ratio",
+    "spy_LowerShadowPct",
+    "smh_LowerShadowPct",
+    "spy_RollingKurtosis",
+    "smh_RollingKurtosis",
+    "spy_RollingSkew",
+    "smh_RollingSkew",
+    "spy_UpperShadowPct",
+    "smh_UpperShadowPct",
+    "spy_VolumeChange",
+    "smh_VolumeChange",
+    "smh_GapDirection",
+    "spy_GapDirection",
 ]
-# LESS_COMPLEX_MATRIX = [
-#     'BodyPct',
-#     'GapPct',
-#      'UpperShadowPct',
-#      'LowerShadowPct',
-#        'EMA_Ratio',
-#        'PriceEMA20',
-#        'Volatility5',
-#       'TrueRangePct',
-#       # 'smh_RollingQuantile25',
-#       'spy_Volatility10'
-#       #  "smh_RollingKurtosis",
-#       #  "RollingStd",
-   
-#     # "EMA_Ratio",
-#     # "LowerShadowPct",
-#     # "RollingKurtosis",
-#     # "RollingSkew",
-#     # "RollingStd",
-#     # "UpperShadowPct",
-#     # Volatility
-#     # "Volatility5",
-#     # "VolumeChange",
-#     # "spy_EMA_Ratio",
-#     # "spy_LowerShadowPct",
-#     # "smh_LowerShadowPct",
-#     # "spy_RollingKurtosis",
-#     # "smh_RollingKurtosis",
-#     # "spy_RollingSkew",
-#     # "smh_RollingSkew",
-#     # "spy_UpperShadowPct",
-#     # "smh_UpperShadowPct",
-#     # "spy_VolumeChange",
-#     # "smh_VolumeChange",
-#     # "smh_GapDirection",
-#     # "spy_GapDirection",
-# ]
 
 # These target columns already exist in the combined CSV. LogReturn1 and
 # Direction must stay here because they are the sources used to create the
@@ -180,14 +93,14 @@ SOURCE_TARGET_COLUMNS = [
     "LogReturn1",
     "Direction",
     "LogReturn3",
-    # "LogReturn5",
-    # "LogReturn10",
+    "LogReturn5",
+    "LogReturn10",
     "spy_LogReturn1",
     "spy_Direction",
-    # "spy_LogReturn3",
+    "spy_LogReturn3",
     "smh_LogReturn1",
-    # "smh_Direction",
-    # "smh_LogReturn3",
+    "smh_Direction",
+    "smh_LogReturn3",
 ]
 
 # Derived targets are created in this training script after the combined CSV
@@ -1673,15 +1586,15 @@ def main():
         ),
     }
 
-    # send_run_to_mlflow_tracker(
-    #     metadata_path=__FEATURE_META_PATH,
-    #     experiment_name=experiment_name,
-    #     task=task,
-    #     bar_size=bar_size,
-    #     horizon=primary_horizon,
-    #     parameters=tracking_parameters,
-    #     metrics=tracking_metrics,
-    # )
+    send_run_to_mlflow_tracker(
+        metadata_path=__FEATURE_META_PATH,
+        experiment_name=experiment_name,
+        task=task,
+        bar_size=bar_size,
+        horizon=primary_horizon,
+        parameters=tracking_parameters,
+        metrics=tracking_metrics,
+    )
 
 
 if __name__ == "__main__":

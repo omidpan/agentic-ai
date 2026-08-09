@@ -1,0 +1,85 @@
+# Historical Time & Sales (tick-by-tick) configuration for ibq_tick_scraper.py.
+#
+# Important: tick data is much larger and slower to retrieve than 4-hour bars.
+# Start with one symbol and a short duration, verify the CSV, and then expand.
+
+# Symbols are downloaded concurrently, while one shared limiter protects the
+# account from IBKR historical-data pacing violations.
+max_workers: 3
+
+# Relative paths are resolved beneath BASE_DIR.
+output_root: data/ticks
+
+# Conservative limits based on IBKR's documented historical-data pacing rules.
+# BID_ASK requests automatically count as two request units.
+pacing:
+  max_request_units: 55
+  window_seconds: 600
+  same_contract_max_requests: 5
+  same_contract_window_seconds: 2
+  minimum_interval_seconds: 0.25
+
+defaults:
+  # Do not copy the bar scraper's "5 Y" value here. Historical Time & Sales is
+  # available for at most three years, and even one busy day can be very large.
+  duration: "1 D"
+
+  sessions:
+    # rth = SMART venue, regular trading hours only
+    # - rth
+
+    # extended = SMART venue, RTH plus available pre-market/post-market data
+    - extended
+
+    # overnight = direct IBKR OVERNIGHT venue (supported US stocks/ETFs only)
+    # - overnight
+
+  # Allowed values: TRADES, BID_ASK, MIDPOINT
+  tick_type: TRADES
+
+  # IBKR permits at most 1,000 distinct data points per request. It may return
+  # slightly more so that all ticks from the final second stay together.
+  ticks_per_request: 1000
+
+  # Applicable mainly to BID_ASK. False keeps size-only quote updates.
+  ignore_size: false
+
+  # With no explicit end_datetime, stop a few seconds behind the current time
+  # so the latest second is complete.
+  end_delay_seconds: 5
+
+  request_timeout_seconds: 120
+  max_retries: 2
+  retry_delay_seconds: 16
+
+  # If IBKR returns an empty closed-session window, move this far backward.
+  empty_step_seconds: 86400
+
+  security_type: STK
+  currency: USD
+
+groups:
+  semiconductor:
+    symbols:
+      - NVDA
+      # - AMD
+      # - AVGO
+      # - TSM
+      # - MRVL
+      # - AMAT
+      # - INTC
+      # - MU
+
+      # A symbol may override any default:
+      # - symbol: INTC
+      #   primary_exchange: NASDAQ
+      #   duration: "6 H"
+      #   sessions: [rth, overnight]
+      #   tick_type: BID_ASK
+
+  # context:
+  #   symbols:
+      - symbol: SMH
+        duration: "1 D"
+      # - symbol: SPY
+      #   duration: "1 D"

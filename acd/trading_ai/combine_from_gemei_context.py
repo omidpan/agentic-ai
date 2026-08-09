@@ -1,8 +1,8 @@
 import pandas as pd
-
+from config import DATA_DIR
 # 1. Define your vertical stock parameters
 TICKERS = ['amat', 'avgo','amd','intc','mrvl','mu','tsm', 'nvda']
-BAR_SIZE = '1day'
+BAR_SIZE = '4hours'
 FILE_SUFFIX = 'extended_feng'
 
 # 2. Define your horizontal context file list
@@ -13,7 +13,7 @@ CONTEXT_TICKERS = ['spy', 'smh']
 # Vertical input files list
 INPUT_FILES = []
 for ticker in TICKERS:
-    filename = f"{ticker}_{BAR_SIZE}_{FILE_SUFFIX}.csv"
+    filename = f"{DATA_DIR}/semiconductor/{ticker}_{BAR_SIZE}_{FILE_SUFFIX}.csv"
     INPUT_FILES.append({
         "ticker": ticker,
         "path": filename,
@@ -23,7 +23,7 @@ for ticker in TICKERS:
 # Context input files list
 CONTEXT_FILES = []
 for ctx_ticker in CONTEXT_TICKERS:
-    filename = f"{ctx_ticker}_{BAR_SIZE}_{FILE_SUFFIX}.csv"
+    filename = f"{DATA_DIR}/context/{ctx_ticker}_{BAR_SIZE}_{FILE_SUFFIX}.csv"
     CONTEXT_FILES.append({
         "context_ticker": ctx_ticker,
         "path": filename,
@@ -137,5 +137,5 @@ def load_and_merge_stocks(file_list, context_list, output_path):
 merge_df = load_and_merge_stocks(
     file_list=INPUT_FILES, 
     context_list=CONTEXT_FILES, 
-    output_path=f"combined_semconductor_{BAR_SIZE}_{FILE_SUFFIX}.csv"
+    output_path=f"{DATA_DIR}/combined_semiconductor_{BAR_SIZE}_{FILE_SUFFIX}.csv"
 )

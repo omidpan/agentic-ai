@@ -16,7 +16,9 @@ BAR_SIZE_ALIASES = {
     "4 hour": "4hours",
     "4h": "4hours",
     "1day":"1day",
-    "1d":"1day"
+    "1d":"1day",
+    "1min":"1min",
+    "1 min":"1min"
 }
 PRICE_VOLUME_COLUMNS = ["open", "high", "low", "close", "volume"]
 PRICE_COLUMNS = ["open", "high", "low", "close"]
@@ -756,8 +758,8 @@ def main():
     symbol = args.symbol.strip().lower()
     bar_size = normalize_bar_size(args.bar_size)
         
-    input_path = BASE_DIR / f"{symbol}_{bar_size}_{SESSION}.csv" if not  args.context else Path("../context") / f"{symbol}_{bar_size}_{SESSION}.csv"
-    output_path = BASE_DIR / f"{symbol}_{bar_size}_{SESSION}_feng.csv" if not  args.context else Path("../context")/f"{symbol}_{bar_size}_{SESSION}_feng.csv"
+    input_path = BASE_DIR / f"{symbol}_{bar_size}_{SESSION}_revisit.csv" if not  args.context else Path("../context") / f"{symbol}_{bar_size}_{SESSION}_revisit.csv"
+    output_path = BASE_DIR / f"{symbol}_{bar_size}_{SESSION}_feng_revisit.csv" if not  args.context else Path("../context")/f"{symbol}_{bar_size}_{SESSION}_feng_revisit.csv"
 
     ######## read each ticker
     df = pd.read_csv(input_path,parse_dates=["datetime"],)
@@ -765,7 +767,7 @@ def main():
     ####### add features
     modified_df=add_all_features(df)
     #Remove first early candles because of nan
-    modified_df = modified_df.iloc[20:]
+    # modified_df = modified_df.iloc[10:]
     #### add ticker and group to dataframe
     modified_df = modified_df.assign(ticker=symbol,group='semiconductor',)
     modified_df.to_csv(f'{output_path}', index=False)

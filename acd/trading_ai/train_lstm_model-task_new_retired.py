@@ -62,9 +62,7 @@ from config import (
 # ============================================================
 # These are the only columns passed to the LSTM as X.
 LESS_COMPLEX_MATRIX = [
-    "BodyPct",
     "EMA_Ratio",
-    "GapPct",
     "LowerShadowPct",
     "RollingKurtosis",
     "RollingSkew",
@@ -86,18 +84,10 @@ LESS_COMPLEX_MATRIX = [
     "smh_GapDirection",
     "spy_GapDirection",
 ]
-LESS_COMPLEX_MATRIX = [
-    feature
-    for feature in LESS_COMPLEX_MATRIX
-    if feature not in {"BodyPct", "GapPct"}
-]
 
-assert len(LESS_COMPLEX_MATRIX) == 21
-
-# These columns remain available as y labels in the train, validation, and
-# test DataFrames. They are never included in LESS_COMPLEX_MATRIX, so they are
-# hidden from the model input during training, validation, and testing.
-target_classes = [
+# These target columns already exist in the combined CSV. LogReturn1 must stay
+# here because it is the source used to create FutureLogReturn1.
+SOURCE_TARGET_COLUMNS = [
     "LogReturn1",
     "Direction",
     "LogReturn3",
@@ -109,6 +99,24 @@ target_classes = [
     "smh_LogReturn1",
     "smh_Direction",
     "smh_LogReturn3",
+]
+
+# Derived targets are created in this training script after the combined CSV
+# has been loaded and validated. A negative shift means that row t receives the
+# value from a later row of the same ticker.
+FUTURE_TARGET_SPECS = {
+    "FutureLogReturn1": {
+        "source_column": "LogReturn1",
+        "shift_periods": 1,
+    },
+}
+
+# Every source or derived label that may be selected as y. None of these
+# columns is included in LESS_COMPLEX_MATRIX, so none is passed to the LSTM as
+# an input feature.
+target_classes = [
+    *SOURCE_TARGET_COLUMNS,
+    *FUTURE_TARGET_SPECS,
 ]
 
 CLASSIFICATION_TARGETS = [
@@ -146,7 +154,9 @@ MODEL_DATA_COLUMNS = [
     "datetime",
     TICKER_COLUMN,
     *LESS_COMPLEX_MATRIX,
-    *target_classes,
+    # Only source targets are required in the input CSV. Future targets are
+    # generated later by create_selected_future_targets().
+    *SOURCE_TARGET_COLUMNS,
 ]
 
 
@@ -187,7 +197,7 @@ parser.add_argument(
     default=None,
     help=(
         "Optional comma-separated regression targets from target_classes. "
-        "Defaults to LogReturn1 for regression and all eight continuous "
+        "Defaults to LogReturn1 for regression and all available continuous "
         "targets for multi_regression."
     ),
 )
@@ -368,6 +378,102 @@ def chronological_split(
 
     return train_df, validation_df, test_df
 
+
+def create_selected_future_targets(df, selected_targets):
+    """Create only the future targets requested for the current run."""
+
+    df = (
+        df.copy()
+        .sort_values([TICKER_COLUMN, "datetime"])
+        .reset_index(drop=True)
+    )
+
+    for target_name in selected_targets:
+        target_spec = FUTURE_TARGET_SPECS.get(target_name)
+        if target_spec is None:
+            continue
+
+        source_column = target_spec["source_column"]
+        shift_periods = int(target_spec["shift_periods"])
+
+        df[target_name] = (
+            df.groupby(TICKER_COLUMN, sort=False)[source_column]
+            .shift(-shift_periods)
+        )
+
+        print(
+            f"Created {target_name}: row t uses "
+            f"{source_column} from t+{shift_periods}."
+        )
+
+    return df.sort_values(
+        ["datetime", TICKER_COLUMN]
+    ).reset_index(drop=True)
+
+
+def purge_future_target_boundary_rows(
+    split_df,
+    selected_targets,
+    split_name,
+):
+    """Remove split-ending rows whose future labels cross a boundary."""
+
+    purge_periods = max(
+        (
+            int(FUTURE_TARGET_SPECS[target_name]["shift_periods"])
+            for target_name in selected_targets
+            if target_name in FUTURE_TARGET_SPECS
+        ),
+        default=0,
+    )
+
+    if purge_periods == 0:
+        return split_df.copy()
+
+    split_df = (
+        split_df.copy()
+        .sort_values([TICKER_COLUMN, "datetime"])
+    )
+
+    rows_per_ticker = split_df.groupby(
+        TICKER_COLUMN,
+        sort=False,
+    ).size()
+    too_short = rows_per_ticker[rows_per_ticker <= purge_periods]
+    if not too_short.empty:
+        raise ValueError(
+            f"{split_name} does not have enough rows to purge "
+            f"{purge_periods} future-target boundary row(s):\n"
+            f"{too_short.to_string()}"
+        )
+
+    distance_from_ticker_end = split_df.groupby(
+        TICKER_COLUMN,
+        sort=False,
+    ).cumcount(ascending=False)
+    purge_mask = distance_from_ticker_end < purge_periods
+
+    purged_df = split_df.loc[~purge_mask].copy()
+    number_of_tickers = int(split_df[TICKER_COLUMN].nunique())
+    expected_purged_rows = number_of_tickers * purge_periods
+    actual_purged_rows = int(purge_mask.sum())
+
+    if actual_purged_rows != expected_purged_rows:
+        raise AssertionError(
+            f"{split_name} purged {actual_purged_rows} rows; "
+            f"expected {expected_purged_rows}."
+        )
+
+    print(
+        f"{split_name}: purged {actual_purged_rows} ending rows "
+        f"({purge_periods} per ticker) for future-target isolation."
+    )
+
+    return purged_df.sort_values(
+        ["datetime", TICKER_COLUMN]
+    ).reset_index(drop=True)
+
+
 def create_sequences(X, targets, sequence_length):
     """
     Create LSTM sequences for either:
@@ -508,7 +614,7 @@ def validate_combined_dataset(df: pd.DataFrame) -> pd.DataFrame:
     if df[TICKER_COLUMN].isna().any():
         raise ValueError("ticker_id contains missing values.")
 
-    for column in [*LESS_COMPLEX_MATRIX, *target_classes]:
+    for column in [*LESS_COMPLEX_MATRIX, *SOURCE_TARGET_COLUMNS]:
         df[column] = pd.to_numeric(df[column], errors="raise")
 
     duplicate_mask = df.duplicated([TICKER_COLUMN, "datetime"], keep=False)
@@ -617,8 +723,18 @@ def prepare_data(df: pd.DataFrame, target_columns):
 
     feature_columns = list(LESS_COMPLEX_MATRIX)
 
+    # A future target does not exist yet at this stage. Validate its source
+    # column now; the derived target itself is validated after split purging.
+    pre_split_target_columns = list(dict.fromkeys(
+        FUTURE_TARGET_SPECS.get(
+            target_name,
+            {"source_column": target_name},
+        )["source_column"]
+        for target_name in target_columns
+    ))
+
     validate_finite_features(df, feature_columns, "Combined dataset")
-    validate_selected_targets(df, target_columns)
+    validate_selected_targets(df, pre_split_target_columns)
 
     print("Feature set: LESS_COMPLEX_MATRIX")
     print(f"Selected feature count: {len(feature_columns)}")
@@ -871,13 +987,18 @@ def main():
     print("Rows per ticker_id before splitting:")
     print(df.groupby(TICKER_COLUMN).size().to_string())
 
-    # The dataset already contains all requested targets. Keep them in each
-    # split as labels, but use only LESS_COMPLEX_MATRIX when constructing X.
+    # Keep every target outside X. Derived future targets are created per
+    # ticker here; their split-ending rows are purged after chronological
+    # splitting so labels cannot cross train/validation/test boundaries.
     target_columns = list(selected_target_columns)
-    df = df.dropna(subset=target_columns).copy()
 
     df_full, feature_columns = prepare_data(
         df,
+        target_columns,
+    )
+
+    df_full = create_selected_future_targets(
+        df_full,
         target_columns,
     )
 
@@ -888,7 +1009,38 @@ def main():
         VAL_FRAC,
     )
 
-    print(f"Train/Val/Test rows: {len(train_df)}/{len(validation_df)}/{len(test_df)}")
+    # Verify the original chronological partitions before purging their ending
+    # future-target rows.
+    assert train_df["datetime"].max() < validation_df["datetime"].min()
+    assert validation_df["datetime"].max() < test_df["datetime"].min()
+
+    train_df = purge_future_target_boundary_rows(
+        train_df,
+        target_columns,
+        "Train",
+    )
+    validation_df = purge_future_target_boundary_rows(
+        validation_df,
+        target_columns,
+        "Validation",
+    )
+    test_df = purge_future_target_boundary_rows(
+        test_df,
+        target_columns,
+        "Test",
+    )
+
+    for split_name, split_df in (
+        ("Train", train_df),
+        ("Validation", validation_df),
+        ("Test", test_df),
+    ):
+        validate_selected_targets(split_df, target_columns)
+
+    print(
+        "Train/Val/Test rows after target-boundary purge: "
+        f"{len(train_df)}/{len(validation_df)}/{len(test_df)}"
+    )
     print("Train:", train_df["datetime"].min()," to ", train_df["datetime"].max())
 
     print("Validation:", validation_df["datetime"].min()," to", validation_df["datetime"].max())
@@ -901,9 +1053,6 @@ def main():
     print(validation_df.groupby(TICKER_COLUMN).size().to_string())
     print("Test rows per ticker_id:")
     print(test_df.groupby(TICKER_COLUMN).size().to_string())
-
-    assert train_df["datetime"].max() < validation_df["datetime"].min()
-    assert validation_df["datetime"].max() < test_df["datetime"].min()
 
     # Fit every scaler on TRAINING data only.
     feature_scaler = StandardScaler()
@@ -991,6 +1140,11 @@ def main():
         "feature_set": "LESS_COMPLEX_MATRIX",
         "available_target_classes": target_classes,
         "selected_target_columns": target_columns,
+        "selected_future_target_specs": {
+            target_name: FUTURE_TARGET_SPECS[target_name]
+            for target_name in target_columns
+            if target_name in FUTURE_TARGET_SPECS
+        },
         "target_columns_in_model_input": False,
         "window_size": WINDOW_SIZE,
         "horizon": primary_horizon,
@@ -1332,15 +1486,15 @@ def main():
         ),
     }
 
-    # send_run_to_mlflow_tracker(
-    #     metadata_path=__FEATURE_META_PATH,
-    #     experiment_name=experiment_name,
-    #     task=task,
-    #     bar_size=bar_size,
-    #     horizon=primary_horizon,
-    #     parameters=tracking_parameters,
-    #     metrics=tracking_metrics,
-    # )
+    send_run_to_mlflow_tracker(
+        metadata_path=__FEATURE_META_PATH,
+        experiment_name=experiment_name,
+        task=task,
+        bar_size=bar_size,
+        horizon=primary_horizon,
+        parameters=tracking_parameters,
+        metrics=tracking_metrics,
+    )
 
 
 if __name__ == "__main__":
